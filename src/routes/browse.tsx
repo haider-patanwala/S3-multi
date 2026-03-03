@@ -93,7 +93,7 @@ function previewRenderer(
 		return (
 			<img
 				alt={preview.fileName}
-				className="max-h-[70vh] rounded-3xl object-contain"
+				className="max-h-[70vh] rounded-lg object-contain"
 				src={preview.blobUrl}
 			/>
 		);
@@ -101,7 +101,7 @@ function previewRenderer(
 	if (preview.contentType.startsWith("video/")) {
 		return (
 			<video
-				className="max-h-[70vh] rounded-3xl"
+				className="max-h-[70vh] rounded-lg"
 				controls
 				src={preview.blobUrl}
 			>
@@ -124,14 +124,14 @@ function previewRenderer(
 		preview.contentType.includes("json")
 	) {
 		return (
-			<pre className="max-h-[70vh] overflow-auto rounded-3xl bg-black/30 p-4 text-stone-200 text-xs leading-6">
+			<pre className="preview-code">
 				{textPreview}
 			</pre>
 		);
 	}
 	return (
 		<iframe
-			className="h-[70vh] w-[80vw] rounded-3xl bg-white"
+			className="h-[70vh] w-[80vw] rounded-lg bg-[color:var(--panel-strong)]"
 			src={preview.blobUrl}
 			title={preview.fileName}
 		/>
@@ -650,6 +650,22 @@ function BrowsePage() {
 		}
 		return trimmed.split("/");
 	}, [search.prefix]);
+	const folderCount = useMemo(
+		() => objects.filter((item) => item.kind === "folder").length,
+		[objects],
+	);
+	const fileCount = useMemo(
+		() => objects.filter((item) => item.kind === "file").length,
+		[objects],
+	);
+	const visibleBytes = useMemo(
+		() =>
+			objects.reduce(
+				(total, item) => total + (item.kind === "file" ? item.size : 0),
+				0,
+			),
+		[objects],
+	);
 
 	const queueSnapshot = runningTransfers.slice(0, 4);
 	const bucketOptions = useMemo(
@@ -728,10 +744,8 @@ function BrowsePage() {
 		return (
 			<section className="control-panel px-6 py-8">
 				<div className="section-label">Browser</div>
-				<h2 className="mt-2 font-display text-3xl text-stone-100 uppercase tracking-[0.16em]">
-					No provider configured
-				</h2>
-				<p className="mt-4 max-w-2xl text-sm text-stone-300 leading-6">
+				<h2 className="page-title mt-2">No provider configured</h2>
+				<p className="page-copy mt-4 max-w-2xl">
 					Create at least one provider profile before browsing objects. The app
 					stores credentials only in the browser and uses direct S3 API
 					requests.
@@ -769,57 +783,83 @@ function BrowsePage() {
 				ref={replaceInputRef}
 				type="file"
 			/>
-			<section className="control-panel px-4 py-4 lg:px-5 lg:py-5">
-				<div className="space-y-4">
-					<div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-						<div>
-							<div className="section-label">Object browser</div>
-							<h2 className="mt-1 font-display text-2xl text-stone-100 uppercase tracking-[0.14em]">
-								Bucket navigation
-							</h2>
-							<p className="mt-2 max-w-3xl text-sm text-stone-400 leading-6">
-								Compact controls, direct file viewing, and replace-in-place for
-								existing keys.
-							</p>
-						</div>
-						<div className="flex flex-wrap gap-2">
-							<button
-								className={cn(
-									"toggle-button",
-									search.view === "list" && "toggle-button-active",
-								)}
-								onClick={() =>
-									void navigate({
-										search: (current) => ({
-											...current,
-											view: "list" satisfies BrowserView,
-										}),
-									})
-								}
-								type="button"
-							>
-								List
-							</button>
-							<button
-								className={cn(
-									"toggle-button",
-									search.view === "grid" && "toggle-button-active",
-								)}
-								onClick={() =>
-									void navigate({
-										search: (current) => ({
-											...current,
-											view: "grid" satisfies BrowserView,
-										}),
-									})
-								}
-								type="button"
-							>
-								Grid
-							</button>
+			<section className="control-panel browser-dashboard px-4 py-4 lg:px-5 lg:py-5">
+				<div className="browser-dashboard-top">
+					<div>
+						<div className="section-label">Browser dashboard</div>
+						<h2 className="page-title mt-2">Bucket navigation</h2>
+						<p className="page-copy mt-3 max-w-3xl">
+							Dense controls, quick file actions, and live object state for the
+							current bucket and prefix.
+						</p>
+					</div>
+					<div className="flex flex-wrap gap-2">
+						<button
+							className={cn(
+								"toggle-button",
+								search.view === "list" && "toggle-button-active",
+							)}
+							onClick={() =>
+								void navigate({
+									search: (current) => ({
+										...current,
+										view: "list" satisfies BrowserView,
+									}),
+								})
+							}
+							type="button"
+						>
+							List
+						</button>
+						<button
+							className={cn(
+								"toggle-button",
+								search.view === "grid" && "toggle-button-active",
+							)}
+							onClick={() =>
+								void navigate({
+									search: (current) => ({
+										...current,
+										view: "grid" satisfies BrowserView,
+									}),
+								})
+							}
+							type="button"
+						>
+							Grid
+						</button>
+					</div>
+				</div>
+
+				<div className="browser-kpi-grid">
+					<div className="browser-kpi">
+						<div className="browser-kpi-label">Bucket</div>
+						<div className="browser-kpi-value">{bucket ?? "None"}</div>
+					</div>
+					<div className="browser-kpi">
+						<div className="browser-kpi-label">Prefix</div>
+						<div className="browser-kpi-value">{search.prefix || "/"}</div>
+					</div>
+					<div className="browser-kpi">
+						<div className="browser-kpi-label">Visible</div>
+						<div className="browser-kpi-value">{objects.length}</div>
+						<div className="browser-kpi-meta">
+							{folderCount} folders / {fileCount} files
 						</div>
 					</div>
+					<div className="browser-kpi">
+						<div className="browser-kpi-label">Weight</div>
+						<div className="browser-kpi-value">{formatBytes(visibleBytes)}</div>
+						<div className="browser-kpi-meta">
+							{runningTransfers.length} active transfer
+							{runningTransfers.length === 1 ? "" : "s"}
+						</div>
+					</div>
+				</div>
+			</section>
 
+			<section className="control-panel browser-workspace px-4 py-4 lg:px-5 lg:py-5">
+				<div className="browser-toolbar">
 					<div className="compact-toolbar">
 						<div className="field">
 							<span>Provider</span>
@@ -846,7 +886,9 @@ function BrowsePage() {
 								value={provider?.id}
 							>
 								<SelectTrigger className="w-full">
-									<SelectValue placeholder="Select provider" />
+									<SelectValue placeholder="Select provider">
+										{provider?.name ?? "Select provider"}
+									</SelectValue>
 								</SelectTrigger>
 								<SelectContent align="start">
 									{providers.map((entry) => (
@@ -900,8 +942,8 @@ function BrowsePage() {
 						</label>
 					</div>
 
-					<div className="rounded-[20px] border border-white/8 bg-black/20 p-3">
-						<div className="text-[11px] text-stone-500 uppercase tracking-[0.24em]">
+					<div className="browser-path-panel">
+						<div className="browser-path-label">
 							Path
 						</div>
 						<div className="mt-2 flex flex-wrap items-center gap-2">
@@ -938,361 +980,348 @@ function BrowsePage() {
 							})}
 						</div>
 						{bucketsQuery.data?.length ? null : (
-							<div className="mt-3 text-stone-500 text-xs leading-5">
+							<div className="field-note mt-3">
 								No buckets are available to show. If this is R2, account-level
 								listing may be blocked by browser CORS.
 							</div>
 						)}
 					</div>
 				</div>
-			</section>
 
-			<div className="space-y-4">
-				<section className="control-panel px-4 py-4 lg:px-5 lg:py-5">
-					<div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-						<div className="status-banner">{statusMessage}</div>
-						<div className="flex flex-wrap gap-2">
-							<input
-								className="sr-only"
-								id="upload-input"
-								multiple
-								onChange={(event) => {
-									const files = Array.from(event.target.files ?? []);
-									if (files.length) {
-										uploadMutation.mutate(files);
-									}
-									event.target.value = "";
-								}}
-								type="file"
-							/>
-							<label
-								className="button-primary cursor-pointer"
-								htmlFor="upload-input"
-							>
-								Upload
-							</label>
-							<button
-								className="button-secondary"
-								onClick={() => {
-									const nextFolder = window.prompt("Folder name");
-									if (!(nextFolder && provider && bucket)) {
-										return;
-									}
-									void createFolder(
-										provider,
-										bucket,
-										`${search.prefix}${nextFolder}/`,
-									)
-										.then(async () => {
-											setStatusMessage(`Created folder ${nextFolder}.`);
-											await queryClient.invalidateQueries({
-												queryKey: ["objects", provider.id, bucket],
-											});
-										})
-										.catch((error) => {
-											setStatusMessage(
-												error instanceof Error
-													? error.message
-													: "Folder creation failed.",
-											);
+				<div className="browser-status-row">
+					<div className="status-banner">{statusMessage}</div>
+					<div className="browser-actions">
+						<input
+							className="sr-only"
+							id="upload-input"
+							multiple
+							onChange={(event) => {
+								const files = Array.from(event.target.files ?? []);
+								if (files.length) {
+									uploadMutation.mutate(files);
+								}
+								event.target.value = "";
+							}}
+							type="file"
+						/>
+						<label
+							className="button-primary cursor-pointer"
+							htmlFor="upload-input"
+						>
+							Upload
+						</label>
+						<button
+							className="button-secondary"
+							onClick={() => {
+								const nextFolder = window.prompt("Folder name");
+								if (!(nextFolder && provider && bucket)) {
+									return;
+								}
+								void createFolder(
+									provider,
+									bucket,
+									`${search.prefix}${nextFolder}/`,
+								)
+									.then(async () => {
+										setStatusMessage(`Created folder ${nextFolder}.`);
+										await queryClient.invalidateQueries({
+											queryKey: ["objects", provider.id, bucket],
 										});
-								}}
-								type="button"
-							>
-								New folder
-							</button>
-							<button
-								className="button-danger"
-								disabled={!selectedKeys.length}
-								onClick={() => {
-									if (!selectedKeys.length) {
-										return;
-									}
-									if (
-										window.confirm(
-											`Delete ${selectedKeys.length} selected item${selectedKeys.length > 1 ? "s" : ""}?`,
-										)
-									) {
-										deleteMutation.mutate(selectedKeys);
-									}
-								}}
-								type="button"
-							>
-								Delete
-							</button>
+									})
+									.catch((error) => {
+										setStatusMessage(
+											error instanceof Error
+												? error.message
+												: "Folder creation failed.",
+										);
+									});
+							}}
+							type="button"
+						>
+							New folder
+						</button>
+						<button
+							className="button-danger"
+							disabled={!selectedKeys.length}
+							onClick={() => {
+								if (!selectedKeys.length) {
+									return;
+								}
+								if (
+									window.confirm(
+										`Delete ${selectedKeys.length} selected item${selectedKeys.length > 1 ? "s" : ""}?`,
+									)
+								) {
+									deleteMutation.mutate(selectedKeys);
+								}
+							}}
+							type="button"
+						>
+							Delete
+						</button>
+					</div>
+				</div>
+
+				<div className="browser-caption-row">
+					<span>{selectedKeys.length} selected</span>
+					<span>
+						{queueSnapshot[0]
+							? `Latest transfer: ${queueSnapshot[0].fileName}`
+							: "Transfer queue idle"}
+					</span>
+					<span>Replace keeps the path and adopts the incoming extension</span>
+					<span>Preview is available only for text, image, and video files</span>
+				</div>
+
+				{/* biome-ignore lint/a11y/noStaticElementInteractions: this section is a drag-and-drop target for file uploads, not a click target */}
+				<section
+					className={cn(
+						"file-dropzone mt-4",
+						isDragActive && "file-dropzone-active",
+					)}
+					onDragEnter={handleDragEnter}
+					onDragLeave={handleDragLeave}
+					onDragOver={handleDragOver}
+					onDrop={handleDrop}
+				>
+					{isDragActive ? (
+						<div className="drop-overlay">
+							<div className="drop-overlay-inner">
+								<div className="section-label">Drop files to upload</div>
+								<div className="drop-title">
+									Release to send into {bucket ?? "current bucket"}
+								</div>
+								<div className="drop-copy">
+									Files will upload into the current prefix:
+									<span className="drop-accent ml-2">
+										{search.prefix || "/"}
+									</span>
+								</div>
+							</div>
 						</div>
-					</div>
-
-					<div className="mt-3 flex flex-wrap gap-2 text-stone-500 text-xs">
-						<span className="pill">{objects.length} visible</span>
-						<span className="pill">{selectedKeys.length} selected</span>
-						<span className="pill">
-							{runningTransfers.length} transfers active
-						</span>
-						{queueSnapshot[0] ? (
-							<span className="pill">Latest: {queueSnapshot[0].fileName}</span>
-						) : null}
-						<span className="pill">
-							Replace keeps the path and adopts the incoming extension
-						</span>
-						<span className="pill">
-							View only appears for text, image, and video files
-						</span>
-					</div>
-
-					{/* biome-ignore lint/a11y/noStaticElementInteractions: this section is a drag-and-drop target for file uploads, not a click target */}
-					<section
-						className={cn(
-							"file-dropzone mt-4",
-							isDragActive && "file-dropzone-active",
-						)}
-						onDragEnter={handleDragEnter}
-						onDragLeave={handleDragLeave}
-						onDragOver={handleDragOver}
-						onDrop={handleDrop}
-					>
-						{isDragActive ? (
-							<div className="drop-overlay">
-								<div className="drop-overlay-inner">
-									<div className="section-label">Drop files to upload</div>
-									<div className="mt-2 font-display text-2xl text-stone-100 uppercase tracking-[0.14em]">
-										Release to send into {bucket ?? "current bucket"}
-									</div>
-									<div className="mt-2 text-sm text-stone-300 leading-6">
-										Files will upload into the current prefix:
-										<span className="ml-2 text-amber-200">
-											{search.prefix || "/"}
-										</span>
-									</div>
-								</div>
-							</div>
-						) : null}
-						{search.view === "grid" ? (
-							<div className="object-grid">
-								{objects.map((item) => (
-									<ObjectCard
-										item={item}
-										key={item.key}
-										onDelete={() => deleteMutation.mutate([item.key])}
-										onDownload={() => downloadMutation.mutate(item)}
-										onOpenFolder={() =>
-											void navigate({
-												search: (current) => ({
-													...current,
-													prefix: item.key,
-												}),
-											})
-										}
-										onPreview={() => previewMutation.mutate(item)}
-										onReplace={() => openReplacePicker(item)}
-										onRename={() => {
-											const nextName = window.prompt(
-												"Rename object",
-												item.name,
-											);
-											if (
-												!(
-													nextName &&
-													bucket &&
-													provider &&
-													item.kind === "file"
-												)
-											) {
-												return;
-											}
-											renameMutation.mutate({
-												fromKey: item.key,
-												toKey: `${search.prefix}${nextName}`,
-											});
-										}}
-										onSelect={(checked) =>
-											setSelectedKeys((current) =>
-												checked
-													? [...new Set([...current, item.key])]
-													: current.filter((entry) => entry !== item.key),
+					) : null}
+					{search.view === "grid" ? (
+						<div className="object-grid">
+							{objects.map((item) => (
+								<ObjectCard
+									item={item}
+									key={item.key}
+									onDelete={() => deleteMutation.mutate([item.key])}
+									onDownload={() => downloadMutation.mutate(item)}
+									onOpenFolder={() =>
+										void navigate({
+											search: (current) => ({
+												...current,
+												prefix: item.key,
+											}),
+										})
+									}
+									onPreview={() => previewMutation.mutate(item)}
+									onReplace={() => openReplacePicker(item)}
+									onRename={() => {
+										const nextName = window.prompt("Rename object", item.name);
+										if (
+											!(
+												nextName &&
+												bucket &&
+												provider &&
+												item.kind === "file"
 											)
+										) {
+											return;
 										}
-										onShare={async () => {
-											if (!provider || !bucket) {
-												return;
-											}
-											const url = buildObjectUrl(provider, bucket, item.key);
-											if (!url) {
-												setStatusMessage(
-													"Direct URL unavailable for this provider.",
-												);
-												return;
-											}
-											await navigator.clipboard.writeText(url);
-											setStatusMessage(`Copied URL for ${item.name}.`);
-										}}
-										selected={selectedKeys.includes(item.key)}
-									/>
-								))}
+										renameMutation.mutate({
+											fromKey: item.key,
+											toKey: `${search.prefix}${nextName}`,
+										});
+									}}
+									onSelect={(checked) =>
+										setSelectedKeys((current) =>
+											checked
+												? [...new Set([...current, item.key])]
+												: current.filter((entry) => entry !== item.key),
+										)
+									}
+									onShare={async () => {
+										if (!provider || !bucket) {
+											return;
+										}
+										const url = buildObjectUrl(provider, bucket, item.key);
+										if (!url) {
+											setStatusMessage(
+												"Direct URL unavailable for this provider.",
+											);
+											return;
+										}
+										await navigator.clipboard.writeText(url);
+										setStatusMessage(`Copied URL for ${item.name}.`);
+									}}
+									selected={selectedKeys.includes(item.key)}
+								/>
+							))}
+						</div>
+					) : (
+						<div className="table-list">
+							<div className="table-header">
+								<div className="pr-2">Name</div>
+								<div>Size</div>
+								<div>Updated</div>
+								<div className="text-right">Actions</div>
 							</div>
-						) : (
-							<div className="table-list">
-								<div className="table-header">
-									<div className="pr-2">Name</div>
-									<div>Size</div>
-									<div>Updated</div>
-									<div className="text-right">Actions</div>
-								</div>
-								<div className="max-h-[720px] overflow-auto" ref={parentRef}>
-									<div
-										className="relative"
-										style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-									>
-										{rowVirtualizer.getVirtualItems().map((virtualItem) => {
-											const item = objects[virtualItem.index];
-											return (
-												<div
-													className="table-row"
-													key={item.key}
-													style={{
-														height: `${virtualItem.size}px`,
-														transform: `translateY(${virtualItem.start}px)`,
-													}}
-												>
-													<div className="flex items-center gap-3 pr-3">
-														<input
-															checked={selectedKeys.includes(item.key)}
-															onChange={(event) =>
-																setSelectedKeys((current) =>
-																	event.target.checked
-																		? [...new Set([...current, item.key])]
-																		: current.filter(
-																				(entry) => entry !== item.key,
-																			),
-																)
+							<div className="max-h-[720px] overflow-auto" ref={parentRef}>
+								<div
+									className="relative"
+									style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+								>
+									{rowVirtualizer.getVirtualItems().map((virtualItem) => {
+										const item = objects[virtualItem.index];
+										return (
+											<div
+												className="table-row"
+												key={item.key}
+												style={{
+													height: `${virtualItem.size}px`,
+													transform: `translateY(${virtualItem.start}px)`,
+												}}
+											>
+												<div className="flex items-center gap-3 pr-3">
+													<input
+														checked={selectedKeys.includes(item.key)}
+														onChange={(event) =>
+															setSelectedKeys((current) =>
+																event.target.checked
+																	? [...new Set([...current, item.key])]
+																	: current.filter(
+																			(entry) => entry !== item.key,
+																		),
+															)
+														}
+														type="checkbox"
+													/>
+													<button
+														className="table-name"
+														onClick={() => {
+															if (item.kind === "folder") {
+																void navigate({
+																	search: (current) => ({
+																		...current,
+																		prefix: item.key,
+																	}),
+																});
+																return;
 															}
-															type="checkbox"
-														/>
-														<button
-															className="table-name"
-															onClick={() => {
-																if (item.kind === "folder") {
-																	void navigate({
-																		search: (current) => ({
-																			...current,
-																			prefix: item.key,
-																		}),
-																	});
-																	return;
-																}
-																if (item.isPreviewable) {
-																	previewMutation.mutate(item);
-																}
-															}}
+															if (item.isPreviewable) {
+																previewMutation.mutate(item);
+															}
+														}}
+														type="button"
+													>
+														<span className="icon-chip">
+															{item.kind === "folder"
+																? "DIR"
+																: objectIcon(item.key)}
+														</span>
+														<span>{item.name}</span>
+													</button>
+												</div>
+												<div className="table-meta">
+													{item.kind === "folder"
+														? "Folder"
+														: formatBytes(item.size)}
+												</div>
+												<div className="table-meta-muted">
+													{formatTimestamp(item.lastModified)}
+												</div>
+												<div className="table-actions">
+													{item.kind === "folder" ? (
+														<Button
+															onClick={() =>
+																void navigate({
+																	search: (current) => ({
+																		...current,
+																		prefix: item.key,
+																	}),
+																})
+															}
+															size="quiet"
 															type="button"
+															variant="quiet"
 														>
-															<span className="icon-chip">
-																{item.kind === "folder"
-																	? "DIR"
-																	: objectIcon(item.key)}
-															</span>
-															<span>{item.name}</span>
-														</button>
-													</div>
-													<div className="text-sm text-stone-300">
-														{item.kind === "folder"
-															? "Folder"
-															: formatBytes(item.size)}
-													</div>
-													<div className="text-sm text-stone-400">
-														{formatTimestamp(item.lastModified)}
-													</div>
-													<div className="table-actions">
-														{item.kind === "folder" ? (
+															Open
+														</Button>
+													) : (
+														<>
+															{item.isPreviewable ? (
+																<Button
+																	onClick={() => previewMutation.mutate(item)}
+																	size="quiet"
+																	type="button"
+																	variant="quiet"
+																>
+																	View
+																</Button>
+															) : (
+																<span
+																	aria-hidden="true"
+																	className="button-quiet-placeholder"
+																/>
+															)}
 															<Button
-																onClick={() =>
-																	void navigate({
-																		search: (current) => ({
-																			...current,
-																			prefix: item.key,
-																		}),
-																	})
-																}
+																onClick={() => downloadMutation.mutate(item)}
 																size="quiet"
 																type="button"
 																variant="quiet"
 															>
-																Open
+																Download
 															</Button>
-														) : (
-															<>
-																{item.isPreviewable ? (
-																	<Button
-																		onClick={() => previewMutation.mutate(item)}
-																		size="quiet"
-																		type="button"
-																		variant="quiet"
-																	>
-																		View
-																	</Button>
-																) : (
-																	<span
-																		aria-hidden="true"
-																		className="button-quiet-placeholder"
-																	/>
-																)}
-																<Button
-																	onClick={() => downloadMutation.mutate(item)}
-																	size="quiet"
-																	type="button"
-																	variant="quiet"
-																>
-																	Download
-																</Button>
-																<Button
-																	onClick={() => {
-																		const nextName = window.prompt(
-																			"Rename object",
-																			item.name,
-																		);
-																		if (!(nextName && provider && bucket)) {
-																			return;
-																		}
-																		renameMutation.mutate({
-																			fromKey: item.key,
-																			toKey: `${search.prefix}${nextName}`,
-																		});
-																	}}
-																	size="quiet"
-																	type="button"
-																	variant="quiet"
-																>
-																	Rename
-																</Button>
-																<Button
-																	onClick={() => openReplacePicker(item)}
-																	size="quiet"
-																	type="button"
-																	variant="quiet"
-																>
-																	Replace
-																</Button>
-															</>
-														)}
-														<Button
-															onClick={() => deleteMutation.mutate([item.key])}
-															size="quiet"
-															type="button"
-															variant="quiet-danger"
-														>
-															Delete
-														</Button>
-													</div>
+															<Button
+																onClick={() => {
+																	const nextName = window.prompt(
+																		"Rename object",
+																		item.name,
+																	);
+																	if (!(nextName && provider && bucket)) {
+																		return;
+																	}
+																	renameMutation.mutate({
+																		fromKey: item.key,
+																		toKey: `${search.prefix}${nextName}`,
+																	});
+																}}
+																size="quiet"
+																type="button"
+																variant="quiet"
+															>
+																Rename
+															</Button>
+															<Button
+																onClick={() => openReplacePicker(item)}
+																size="quiet"
+																type="button"
+																variant="quiet"
+															>
+																Replace
+															</Button>
+														</>
+													)}
+													<Button
+														onClick={() => deleteMutation.mutate([item.key])}
+														size="quiet"
+														type="button"
+														variant="quiet-danger"
+													>
+														Delete
+													</Button>
 												</div>
-											);
-										})}
-									</div>
+											</div>
+										);
+									})}
 								</div>
 							</div>
-						)}
-					</section>
+						</div>
+					)}
 				</section>
-			</div>
+			</section>
 
 			{transferToasts.length ? (
 				<div className="toast-stack">
@@ -1345,12 +1374,12 @@ function BrowsePage() {
 			) : null}
 
 			{preview ? (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
-					<div className="max-h-[90vh] max-w-[90vw] rounded-[34px] border border-white/12 bg-[#120d08] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.55)]">
+				<div className="preview-modal">
+					<div className="preview-frame">
 						<div className="mb-4 flex items-center justify-between gap-4">
 							<div>
 								<div className="section-label">Preview</div>
-								<div className="mt-2 font-display text-2xl text-stone-100 uppercase tracking-[0.14em]">
+								<div className="preview-title mt-2">
 									{preview.fileName}
 								</div>
 							</div>
@@ -1410,7 +1439,7 @@ function ObjectCard(props: {
 			</div>
 			<div className="mt-4">
 				<button
-					className="line-clamp-2 text-left font-display text-stone-100 text-xl uppercase tracking-[0.1em]"
+					className="object-card-title line-clamp-2 text-left"
 					onClick={
 						item.kind === "folder" ? props.onOpenFolder : props.onPreview
 					}
@@ -1418,7 +1447,7 @@ function ObjectCard(props: {
 				>
 					{item.name}
 				</button>
-				<div className="mt-2 text-sm text-stone-400">
+				<div className="object-card-meta mt-2">
 					{item.kind === "folder"
 						? "Folder marker / prefix"
 						: `${formatBytes(item.size)} • ${formatTimestamp(item.lastModified)}`}

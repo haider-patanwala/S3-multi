@@ -212,22 +212,20 @@ function ProvidersPage() {
 
 	return (
 		<div className="space-y-6">
-			<section className="control-panel px-5 py-5 lg:px-7 lg:py-6">
-				<div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+			<section className="control-panel page-header px-5 py-5 lg:px-6 lg:py-6">
+				<div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
 					<div>
-						<div className="section-label">Provider management</div>
-						<h2 className="mt-2 font-display text-3xl text-stone-100 uppercase tracking-[0.16em]">
-							Local credential vault
-						</h2>
-						<p className="mt-3 max-w-3xl text-sm text-stone-300 leading-6">
+						<div className="section-label">Providers</div>
+						<h2 className="page-title mt-2">Local credential vault</h2>
+						<p className="page-copy mt-3 max-w-3xl">
 							Create AWS S3, Cloudflare R2, or custom S3 profiles. Secrets are
 							encrypted before being written to IndexedDB, and they never leave
 							the browser.
 						</p>
 					</div>
-					<div className="grid gap-3 sm:grid-cols-2">
+					<div className="page-stat-grid">
 						{profileStats.map((stat) => (
-							<div className="metric-card min-w-[220px]" key={stat.label}>
+							<div className="metric-card" key={stat.label}>
 								<div className="metric-label">{stat.label}</div>
 								<div className="metric-value text-2xl">{stat.value}</div>
 								<div className="metric-subtle">{stat.subtle}</div>
@@ -237,9 +235,9 @@ function ProvidersPage() {
 				</div>
 			</section>
 
-			<div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+			<div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
 				<section className="control-panel px-5 py-5">
-					<div className="flex items-center justify-between">
+					<div className="panel-header">
 						<div className="section-label">Stored profiles</div>
 						<button
 							className="button-secondary"
@@ -253,7 +251,7 @@ function ProvidersPage() {
 							New provider
 						</button>
 					</div>
-					<div className="mt-4 space-y-3">
+					<div className="stack-list mt-4">
 						{providers.length ? (
 							providers.map((provider) => {
 								const active = provider.id === activeProviderIdQuery.data;
@@ -261,10 +259,8 @@ function ProvidersPage() {
 								return (
 									<button
 										className={cn(
-											"w-full rounded-3xl border px-4 py-4 text-left transition",
-											selected
-												? "border-amber-400/45 bg-amber-500/10"
-												: "border-white/10 bg-white/4 hover:border-white/20 hover:bg-white/6",
+											"provider-card",
+											selected && "provider-card-active",
 										)}
 										key={provider.id}
 										onClick={() => setSelectedId(provider.id)}
@@ -272,10 +268,10 @@ function ProvidersPage() {
 									>
 										<div className="flex items-start justify-between gap-3">
 											<div>
-												<div className="font-display text-stone-100 text-xl uppercase tracking-[0.14em]">
+												<div className="provider-card-title">
 													{provider.name}
 												</div>
-												<div className="mt-1 text-amber-200/75 text-xs uppercase tracking-[0.18em]">
+												<div className="provider-card-type">
 													{shortProviderLabel(provider.type)}
 												</div>
 											</div>
@@ -283,12 +279,12 @@ function ProvidersPage() {
 												<span className="pill pill-active">Active</span>
 											) : null}
 										</div>
-										<div className="mt-4 text-stone-400 text-xs leading-5">
+										<div className="provider-card-note">
 											{provider.defaultBucket
 												? `Pinned bucket: ${provider.defaultBucket}`
-												: "Bucket selected from the browser header"}
+												: "Bucket picked from browser context"}
 										</div>
-										<div className="mt-4 flex flex-wrap gap-2">
+										<div className="provider-card-actions">
 											<button
 												className="button-secondary"
 												onClick={(event) => {
@@ -320,7 +316,7 @@ function ProvidersPage() {
 								);
 							})
 						) : (
-							<div className="rounded-3xl border border-white/12 border-dashed bg-white/4 px-4 py-6 text-sm text-stone-400 leading-6">
+							<div className="empty-state">
 								No providers saved yet. Fill the form to create the first one.
 							</div>
 						)}
@@ -331,14 +327,14 @@ function ProvidersPage() {
 					<div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 						<div>
 							<div className="section-label">Edit profile</div>
-							<h3 className="mt-2 font-display text-2xl text-stone-100 uppercase tracking-[0.14em]">
+							<h3 className="page-subtitle mt-2">
 								{form.id ? "Update provider" : "Create provider"}
 							</h3>
 						</div>
 						<div className="status-banner max-w-xl">{notice}</div>
 					</div>
 
-					<div className="mt-6 grid gap-4 md:grid-cols-2">
+					<div className="form-grid mt-6">
 						<label className="field">
 							<span>Name</span>
 							<input
@@ -452,7 +448,7 @@ function ProvidersPage() {
 								placeholder="Optional pinned bucket"
 								value={form.defaultBucket}
 							/>
-							<span className="text-stone-500 text-xs leading-5">
+							<span className="field-note">
 								Recommended for R2 and browser-only setups. It lets the app test
 								the connection with `HeadBucket` instead of relying on bucket
 								listing.
@@ -477,7 +473,7 @@ function ProvidersPage() {
 								>
 									{form.forcePathStyle ? "Enabled" : "Disabled"}
 								</button>
-								<span className="text-stone-400 text-xs leading-5">
+								<span className="field-note">
 									R2 uses path-style internally. This toggle is mainly for
 									custom S3 endpoints such as MinIO.
 								</span>
@@ -485,7 +481,7 @@ function ProvidersPage() {
 						</label>
 					</div>
 
-					<div className="mt-6 flex flex-wrap gap-3">
+					<div className="form-actions mt-6">
 						<button
 							className="button-primary"
 							disabled={saveMutation.isPending}

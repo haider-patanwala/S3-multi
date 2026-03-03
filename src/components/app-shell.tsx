@@ -11,17 +11,14 @@ const navItems = [
 	{
 		to: "/browse",
 		label: "Browser",
-		blurb: "Inspect buckets and operate on objects",
 	},
 	{
 		to: "/providers",
 		label: "Providers",
-		blurb: "Store encrypted S3 credentials locally",
 	},
 	{
 		to: "/transfers",
 		label: "Transfers",
-		blurb: "Watch uploads, downloads, and retries",
 	},
 ] as const;
 
@@ -47,72 +44,80 @@ export function AppShell() {
 	);
 
 	return (
-		<div className="min-h-screen overflow-x-hidden">
-			<div className="app-shell mx-auto max-w-[1780px] px-3 py-3 sm:px-5 lg:px-6">
-				<header className="control-panel mb-4 overflow-hidden">
-					<div className="absolute inset-y-0 right-0 hidden w-56 bg-[radial-gradient(circle_at_center,rgba(255,157,61,0.18),transparent_70%)] lg:block" />
-					<div className="relative grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:px-5 lg:py-4">
-						<div className="space-y-3">
-							<div className="eyebrow">Client-side control room</div>
-							<div className="max-w-3xl">
-								<h1 className="font-display text-3xl text-stone-50 uppercase tracking-[0.18em] sm:text-[2.2rem]">
-									S3 Multi
-								</h1>
-								<p className="mt-1 max-w-3xl text-[0.82rem] text-stone-400 leading-5">
-									Encrypted browser-native storage for S3, R2, and custom
-									endpoints.
-								</p>
-							</div>
-							<div className="flex flex-wrap gap-2">
-								{navItems.map((item) => (
-									<Link
-										key={item.to}
-										className={cn(
-											"nav-chip min-w-[140px]",
-											pathname.startsWith(item.to) && "nav-chip-active",
-										)}
-										to={item.to}
-									>
-										<span className="font-display text-base uppercase tracking-[0.16em]">
-											{item.label}
-										</span>
-										<span className="text-stone-400 text-xs">{item.blurb}</span>
-									</Link>
-								))}
-							</div>
+		<div className="workspace-frame min-h-screen overflow-x-hidden">
+			<div className="app-shell workspace-shell mx-auto">
+				<aside className="shell-sidebar">
+					<div className="shell-brand">
+						<div className="shell-mark">S3</div>
+						<h1 className="shell-title">Multi-cloud storage dashboard</h1>
+						<span className="shell-badge">
+							{activeProvider
+								? shortProviderLabel(activeProvider.type)
+								: "No provider"}
+						</span>
+					</div>
+
+					<nav className="shell-nav">
+						{navItems.map((item) => (
+							<Link
+								key={item.to}
+								className={cn(
+									"nav-chip",
+									pathname.startsWith(item.to) && "nav-chip-active",
+								)}
+								to={item.to}
+							>
+								<span className="nav-chip-label">{item.label}</span>
+							</Link>
+						))}
+					</nav>
+
+					<div className="shell-aside-note">
+						<div className="metric-label">Active provider</div>
+						<p>
+							{activeProvider?.name ?? "None selected"}
+						</p>
+					</div>
+				</aside>
+
+				<div className="shell-stage min-w-0">
+					<header className="overview-panel">
+						<div className="overview-intro">
+							<div className="eyebrow">Dashboard</div>
+							<h2 className="overview-title">
+								{pathname.startsWith("/browse")
+									? "Object browser"
+									: pathname.startsWith("/providers")
+										? "Provider vault"
+										: pathname.startsWith("/transfers")
+											? "Transfer queue"
+											: "Overview"}
+							</h2>
 						</div>
 
-						<div className="header-meta">
-							<div className="header-stat">
-								<span className="metric-label">Provider</span>
-								<span className="header-stat-value">
-									{activeProvider?.name ?? "None"}
-								</span>
-								<span className="header-stat-note">
-									{activeProvider
-										? shortProviderLabel(activeProvider.type)
-										: "No active selection"}
-								</span>
-							</div>
+						<div className="header-meta overview-stats">
 							<div className="header-stat">
 								<span className="metric-label">Transfers</span>
 								<span className="header-stat-value">{runningTransfers}</span>
-								<span className="header-stat-note">
-									{formatBytes(queuedBytes)} queued
-								</span>
+								<span className="header-stat-note">Active</span>
 							</div>
 							<div className="header-stat">
-								<span className="metric-label">Vault</span>
+								<span className="metric-label">Volume</span>
+								<span className="header-stat-value">{formatBytes(queuedBytes)}</span>
+								<span className="header-stat-note">Total tracked</span>
+							</div>
+							<div className="header-stat">
+								<span className="metric-label">Providers</span>
 								<span className="header-stat-value">{providers.length}</span>
-								<span className="header-stat-note">HTTPS only</span>
+								<span className="header-stat-note">In vault</span>
 							</div>
 						</div>
-					</div>
-				</header>
+					</header>
 
-				<section className="min-w-0">
-					<Outlet />
-				</section>
+					<section className="shell-main min-w-0">
+						<Outlet />
+					</section>
+				</div>
 			</div>
 		</div>
 	);

@@ -27,7 +27,7 @@ function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
 	return (
 		<SelectPrimitive.Value
 			data-slot="select-value"
-			className={cn("flex flex-1 text-left text-stone-100", className)}
+			className={cn("flex flex-1 text-left text-[color:var(--text)]", className)}
 			{...props}
 		/>
 	);
@@ -46,7 +46,7 @@ function SelectTrigger({
 			data-slot="select-trigger"
 			data-size={size}
 			className={cn(
-				"flex w-fit select-none items-center justify-between gap-1.5 whitespace-nowrap rounded-[14px] border border-white/12 bg-black/25 py-2 pr-3 pl-3 text-sm text-stone-100 outline-none transition-colors hover:bg-black/35 focus-visible:border-[rgba(255,157,61,0.56)] focus-visible:ring-3 focus-visible:ring-[rgba(255,157,61,0.14)] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=default]:h-11 data-[size=sm]:h-9 data-[size=sm]:rounded-[12px] data-placeholder:text-stone-500 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+				"flex w-fit select-none items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border border-[color:var(--stroke-strong)] bg-[color:var(--bg)] py-2 pr-3.5 pl-4 text-sm text-[color:var(--text)] outline-none transition-colors hover:border-[color:var(--accent)] focus-visible:border-[color:var(--accent)] focus-visible:ring-3 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=default]:h-10 data-[size=sm]:h-9 data-placeholder:text-[color:var(--muted)] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 				className,
 			)}
 			{...props}
@@ -57,7 +57,7 @@ function SelectTrigger({
 					<HugeiconsIcon
 						icon={UnfoldMoreIcon}
 						strokeWidth={2}
-						className="pointer-events-none size-4 text-stone-500"
+						className="pointer-events-none size-4 text-[color:var(--muted)]"
 					/>
 				}
 			/>
@@ -93,7 +93,7 @@ function SelectContent({
 					data-slot="select-content"
 					data-align-trigger={alignItemWithTrigger}
 					className={cn(
-						"data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-y-auto overflow-x-hidden rounded-[16px] border border-white/10 bg-[#120d08] text-stone-100 shadow-[0_20px_50px_rgba(0,0,0,0.45)] ring-1 ring-white/6 duration-100 data-[align-trigger=true]:animate-none data-closed:animate-out data-open:animate-in",
+						"data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-y-auto overflow-x-hidden rounded-lg border border-[color:var(--stroke-strong)] bg-[color:var(--panel-strong)] text-[color:var(--text)] shadow-[0_12px_32px_rgba(0,0,0,0.4)] duration-100 data-[align-trigger=true]:animate-none data-closed:animate-out data-open:animate-in",
 						className,
 					)}
 					{...props}
@@ -115,7 +115,7 @@ function SelectLabel({
 		<SelectPrimitive.GroupLabel
 			data-slot="select-label"
 			className={cn(
-				"px-2 py-1 text-[0.68rem] text-stone-500 uppercase tracking-[0.14em]",
+				"px-3 py-1 text-[0.65rem] uppercase tracking-[0.14em] text-[color:var(--muted)]",
 				className,
 			)}
 			{...props}
@@ -132,7 +132,7 @@ function SelectItem({
 		<SelectPrimitive.Item
 			data-slot="select-item"
 			className={cn(
-				"relative flex w-full cursor-default select-none items-center gap-1.5 rounded-[10px] px-2 py-2 text-sm text-stone-200 outline-hidden focus:bg-[rgba(255,157,61,0.12)] focus:text-stone-100 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+				"relative flex w-full cursor-default select-none items-center gap-1.5 rounded-md px-3 py-2 text-sm text-[color:var(--text-soft)] outline-hidden focus:bg-[color:var(--accent-soft)] focus:text-[color:var(--accent)] data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
 				className,
 			)}
 			{...props}
@@ -163,7 +163,7 @@ function SelectSeparator({
 		<SelectPrimitive.Separator
 			data-slot="select-separator"
 			className={cn(
-				"pointer-events-none -mx-1 my-1 h-px bg-white/8",
+				"pointer-events-none -mx-1 my-1 h-px bg-[color:var(--stroke)]",
 				className,
 			)}
 			{...props}
@@ -179,7 +179,7 @@ function SelectScrollUpButton({
 		<SelectPrimitive.ScrollUpArrow
 			data-slot="select-scroll-up-button"
 			className={cn(
-				"top-0 z-10 flex w-full cursor-default items-center justify-center bg-[#120d08] py-1 text-stone-500 [&_svg:not([class*='size-'])]:size-4",
+				"top-0 z-10 flex w-full cursor-default items-center justify-center bg-[color:var(--panel-strong)] py-1 text-[color:var(--muted)] [&_svg:not([class*='size-'])]:size-4",
 				className,
 			)}
 			{...props}
@@ -197,7 +197,7 @@ function SelectScrollDownButton({
 		<SelectPrimitive.ScrollDownArrow
 			data-slot="select-scroll-down-button"
 			className={cn(
-				"bottom-0 z-10 flex w-full cursor-default items-center justify-center bg-[#120d08] py-1 text-stone-500 [&_svg:not([class*='size-'])]:size-4",
+				"bottom-0 z-10 flex w-full cursor-default items-center justify-center bg-[color:var(--panel-strong)] py-1 text-[color:var(--muted)] [&_svg:not([class*='size-'])]:size-4",
 				className,
 			)}
 			{...props}
