@@ -1151,6 +1151,63 @@ textarea {
 	border-radius: 0.55rem;
 }
 
+.guide-section {
+	display: grid;
+	gap: 0.25rem;
+}
+
+.guide-step {
+	display: grid;
+	grid-template-columns: 1.8rem 1fr;
+	gap: 0.65rem;
+	align-items: start;
+	padding: 0.65rem 0.75rem;
+	background: var(--panel-soft);
+	border: 1px solid var(--stroke);
+	border-radius: 0.65rem;
+}
+
+.guide-step-number {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.8rem;
+	height: 1.8rem;
+	font-family: var(--font-display);
+	font-size: 0.78rem;
+	font-weight: 700;
+	color: var(--accent);
+	background: var(--accent-soft);
+	border: 1px solid rgba(229, 164, 78, 0.15);
+	border-radius: 999px;
+	flex-shrink: 0;
+}
+
+.guide-code {
+	margin: 0;
+	padding: 0.85rem 1rem;
+	font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+	font-size: 0.75rem;
+	line-height: 1.7;
+	color: var(--text-soft);
+	background: var(--bg);
+	border: 1px solid var(--stroke);
+	border-radius: 0.55rem;
+	overflow-x: auto;
+	white-space: pre;
+	tab-size: 2;
+}
+
+.guide-note {
+	padding: 0.65rem 0.85rem;
+	font-size: 0.78rem;
+	line-height: 1.6;
+	color: var(--accent);
+	background: var(--accent-soft);
+	border: 1px solid rgba(229, 164, 78, 0.15);
+	border-radius: 0.6rem;
+}
+
 .sr-only {
 	position: absolute;
 	width: 1px;

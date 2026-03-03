@@ -20,6 +20,10 @@ const navItems = [
 		to: "/transfers",
 		label: "Transfers",
 	},
+	{
+		to: "/help",
+		label: "Help",
+	},
 ] as const;
 
 export function AppShell() {
@@ -91,7 +95,9 @@ export function AppShell() {
 										? "Provider vault"
 										: pathname.startsWith("/transfers")
 											? "Transfer queue"
-											: "Overview"}
+											: pathname.startsWith("/help")
+												? "Getting started"
+												: "Overview"}
 							</h2>
 						</div>
 
