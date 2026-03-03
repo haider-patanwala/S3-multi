@@ -57,7 +57,12 @@ export function AppShell() {
 					collapsed && "workspace-shell-collapsed",
 				)}
 			>
-				<aside className={cn("shell-sidebar", collapsed && "shell-sidebar-collapsed")}>
+				<aside
+					className={cn(
+						"shell-sidebar",
+						collapsed && "shell-sidebar-collapsed",
+					)}
+				>
 					<div className="shell-brand">
 						<div className="shell-brand-row">
 							<div className="shell-mark">S3</div>
@@ -93,7 +98,9 @@ export function AppShell() {
 								title={collapsed ? item.label : undefined}
 								to={item.to}
 							>
-								<span className="nav-chip-label">{collapsed ? item.label[0] : item.label}</span>
+								<span className="nav-chip-label">
+									{collapsed ? item.label[0] : item.label}
+								</span>
 							</Link>
 						))}
 					</nav>
@@ -101,9 +108,7 @@ export function AppShell() {
 					{!collapsed && (
 						<div className="shell-aside-note">
 							<div className="metric-label">Active provider</div>
-							<p>
-								{activeProvider?.name ?? "None selected"}
-							</p>
+							<p>{activeProvider?.name ?? "None selected"}</p>
 						</div>
 					)}
 				</aside>
@@ -125,23 +130,27 @@ export function AppShell() {
 							</h2>
 						</div>
 
-						<div className="header-meta overview-stats">
-							<div className="header-stat">
-								<span className="metric-label">Transfers</span>
-								<span className="header-stat-value">{runningTransfers}</span>
-								<span className="header-stat-note">Active</span>
+						{pathname.startsWith("/transfers") && (
+							<div className="header-meta overview-stats">
+								<div className="header-stat">
+									<span className="metric-label">Transfers</span>
+									<span className="header-stat-value">{runningTransfers}</span>
+									<span className="header-stat-note">Active</span>
+								</div>
+								<div className="header-stat">
+									<span className="metric-label">Volume</span>
+									<span className="header-stat-value">
+										{formatBytes(queuedBytes)}
+									</span>
+									<span className="header-stat-note">Total tracked</span>
+								</div>
+								<div className="header-stat">
+									<span className="metric-label">Providers</span>
+									<span className="header-stat-value">{providers.length}</span>
+									<span className="header-stat-note">In vault</span>
+								</div>
 							</div>
-							<div className="header-stat">
-								<span className="metric-label">Volume</span>
-								<span className="header-stat-value">{formatBytes(queuedBytes)}</span>
-								<span className="header-stat-note">Total tracked</span>
-							</div>
-							<div className="header-stat">
-								<span className="metric-label">Providers</span>
-								<span className="header-stat-value">{providers.length}</span>
-								<span className="header-stat-note">In vault</span>
-							</div>
-						</div>
+						)}
 					</header>
 
 					<section className="shell-main min-w-0">

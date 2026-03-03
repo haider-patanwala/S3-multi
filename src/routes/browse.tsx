@@ -840,7 +840,7 @@ function BrowsePage() {
 							return (
 								<Fragment key={nextPrefix}>
 									<Button
-										className="text-neutral-300 text-xs!"
+										className="justify-start! max-w-24 truncate text-left! text-neutral-300 text-xs!"
 										variant="link"
 										size="xs"
 										onClick={() =>
