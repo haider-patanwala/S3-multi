@@ -1,5 +1,3 @@
-Below is a **compressed, AI-agent-ready PRD** (only the necessary information to design + implement the app). It’s structured as a spec the agent can convert into tasks, code, and UI.
-
 ## 1) Product
 Client-only React + TanStack web app to manage multiple S3-compatible providers (AWS S3, Cloudflare R2, and “Custom S3”). Users add provider configs (access key, secret, region, endpoint, bucket). Credentials remain in the user’s browser.
 
