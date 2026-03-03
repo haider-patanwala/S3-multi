@@ -172,10 +172,8 @@ function HelpPage() {
 					</Step>
 					<Step n={4} title="Set the endpoint">
 						Use the format:{" "}
-						<code>
-							{"https://<account-id>.r2.cloudflarestorage.com"}
-						</code>
-						. Find your Account ID on the R2 overview page.
+						<code>{"https://<account-id>.r2.cloudflarestorage.com"}</code>. Find
+						your Account ID on the R2 overview page.
 					</Step>
 					<Note>
 						R2's <code>ListBuckets</code> may not work from the browser. Add

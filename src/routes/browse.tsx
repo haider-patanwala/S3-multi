@@ -216,7 +216,7 @@ function BrowsePage() {
 	const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
 	const [preview, setPreview] = useState<ObjectPreview | null>(null);
 	const [textPreview, setTextPreview] = useState<string | null>(null);
-	const [statusMessage, setStatusMessage] = useState(
+	const [_statusMessage, setStatusMessage] = useState(
 		"Select a provider and bucket to start browsing objects.",
 	);
 	const [isDragActive, setIsDragActive] = useState(false);

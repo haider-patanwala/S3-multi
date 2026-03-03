@@ -13,9 +13,7 @@ export const Route = createRootRouteWithContext<{
 			<div className="mx-auto max-w-xl px-6 py-24 text-center">
 				<div className="section-label">404</div>
 				<p className="page-title mt-3">Route not found</p>
-				<p className="page-copy mt-4">
-					The requested page does not exist.
-				</p>
+				<p className="page-copy mt-4">The requested page does not exist.</p>
 				<Link className="button-primary mt-6 inline-flex" to="/browse">
 					Return to browser
 				</Link>

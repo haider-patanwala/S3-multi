@@ -528,7 +528,7 @@ function ProvidersPage() {
 																	buckets: next,
 																	defaultBucket:
 																		current.defaultBucket === name
-																			? next[0] ?? ""
+																			? (next[0] ?? "")
 																			: current.defaultBucket,
 																};
 															})
