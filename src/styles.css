@@ -156,6 +156,11 @@ textarea {
 	gap: 0;
 	align-items: stretch;
 	min-height: 100vh;
+	transition: grid-template-columns 200ms ease;
+}
+
+.workspace-shell-collapsed {
+	grid-template-columns: 60px minmax(0, 1fr);
 }
 
 .shell-sidebar,
@@ -191,6 +196,70 @@ textarea {
 	padding: 1.25rem 1.25rem 1rem;
 	border-bottom: 1px solid var(--stroke);
 	flex-shrink: 0;
+}
+
+.shell-brand-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
+.sidebar-toggle {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.5rem;
+	height: 1.5rem;
+	padding: 0;
+	font-size: 0.6rem;
+	color: var(--muted);
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 0.35rem;
+	cursor: pointer;
+	transition: color 120ms ease, background 120ms ease;
+}
+
+.sidebar-toggle:hover {
+	color: var(--text);
+	background: rgba(255, 255, 255, 0.06);
+	border-color: var(--stroke);
+}
+
+.shell-sidebar-collapsed {
+	width: 60px;
+}
+
+.shell-sidebar-collapsed .shell-brand {
+	padding: 1rem 0.5rem 0.75rem;
+	align-items: center;
+}
+
+.shell-sidebar-collapsed .shell-brand-row {
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+.shell-sidebar-collapsed .shell-mark {
+	font-size: 1.1rem;
+}
+
+.shell-sidebar-collapsed .shell-nav {
+	padding: 0.5rem 0.35rem;
+	align-items: center;
+}
+
+.shell-sidebar-collapsed .nav-chip {
+	justify-content: center;
+	padding: 0.55rem;
+}
+
+.shell-sidebar-collapsed .nav-chip-label {
+	font-size: 0.78rem;
+	font-weight: 700;
+	width: 1.2em;
+	text-align: center;
 }
 
 .shell-mark {
@@ -1267,6 +1336,48 @@ textarea {
 	.shell-stage {
 		height: auto;
 		overflow-y: visible;
+	}
+
+	.workspace-shell-collapsed {
+		grid-template-columns: 1fr;
+	}
+
+	.shell-sidebar-collapsed {
+		width: auto;
+	}
+
+	.shell-sidebar-collapsed .shell-brand {
+		padding: 0.75rem 1rem;
+		align-items: center;
+	}
+
+	.shell-sidebar-collapsed .shell-brand-row {
+		flex-direction: row;
+	}
+
+	.shell-sidebar-collapsed .shell-mark {
+		font-size: 1.5rem;
+	}
+
+	.shell-sidebar-collapsed .shell-nav {
+		flex-direction: row;
+		padding: 0.5rem;
+		align-items: center;
+	}
+
+	.shell-sidebar-collapsed .nav-chip {
+		padding: 0.65rem 0.75rem;
+		justify-content: flex-start;
+	}
+
+	.shell-sidebar-collapsed .nav-chip-label {
+		font-size: 0.85rem;
+		width: auto;
+		text-align: left;
+	}
+
+	.sidebar-toggle {
+		display: none;
 	}
 
 	.shell-brand {

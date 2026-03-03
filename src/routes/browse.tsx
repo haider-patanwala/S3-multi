@@ -11,7 +11,16 @@ import {
 	useState,
 } from "react";
 import { z } from "zod";
-import { Button } from "../components/ui/button";
+import { Button, buttonVariants } from "../components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -187,6 +196,11 @@ function BrowsePage() {
 	);
 	const [isDragActive, setIsDragActive] = useState(false);
 	const [replaceTarget, setReplaceTarget] = useState<ObjectEntry | null>(null);
+	const [renameTarget, setRenameTarget] = useState<ObjectEntry | null>(null);
+	const [renameValue, setRenameValue] = useState("");
+	const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+	const [folderName, setFolderName] = useState("");
+	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 	const parentRef = useRef<HTMLDivElement | null>(null);
 	const replaceInputRef = useRef<HTMLInputElement | null>(null);
 	const dragDepthRef = useRef(0);
@@ -642,14 +656,6 @@ function BrowsePage() {
 		}
 		return trimmed.split("/");
 	}, [search.prefix]);
-	const folderCount = useMemo(
-		() => objects.filter((item) => item.kind === "folder").length,
-		[objects],
-	);
-	const fileCount = useMemo(
-		() => objects.filter((item) => item.kind === "file").length,
-		[objects],
-	);
 	const visibleBytes = useMemo(
 		() =>
 			objects.reduce(
@@ -745,7 +751,7 @@ function BrowsePage() {
 					stores credentials only in the browser and uses direct S3 API
 					requests.
 				</p>
-				<Link className="button-primary mt-6 inline-flex" to="/providers">
+				<Link className={cn(buttonVariants({ size: "sm", variant: "default" }), "mt-6")} to="/providers">
 					Open providers
 				</Link>
 			</section>
@@ -981,60 +987,31 @@ function BrowsePage() {
 							type="file"
 						/>
 						<label
-							className="button-primary cursor-pointer"
+							className={cn(buttonVariants({ size: "xs", variant: "default" }), "cursor-pointer")}
 							htmlFor="upload-input"
 						>
 							Upload
 						</label>
-						<button
-							className="button-secondary"
+						<Button
 							onClick={() => {
-								const nextFolder = window.prompt("Folder name");
-								if (!(nextFolder && provider && bucket)) {
-									return;
-								}
-								void createFolder(
-									provider,
-									bucket,
-									`${search.prefix}${nextFolder}/`,
-								)
-									.then(async () => {
-										setStatusMessage(`Created folder ${nextFolder}.`);
-										await queryClient.invalidateQueries({
-											queryKey: ["objects", provider.id, bucket],
-										});
-									})
-									.catch((error) => {
-										setStatusMessage(
-											error instanceof Error
-												? error.message
-												: "Folder creation failed.",
-										);
-									});
+								setFolderName("");
+								setFolderDialogOpen(true);
 							}}
+							size="xs"
 							type="button"
+							variant="outline"
 						>
 							New folder
-						</button>
-						<button
-							className="button-danger"
+						</Button>
+						<Button
 							disabled={!selectedKeys.length}
-							onClick={() => {
-								if (!selectedKeys.length) {
-									return;
-								}
-								if (
-									window.confirm(
-										`Delete ${selectedKeys.length} selected item${selectedKeys.length > 1 ? "s" : ""}?`,
-									)
-								) {
-									deleteMutation.mutate(selectedKeys);
-								}
-							}}
+							onClick={() => setDeleteConfirmOpen(true)}
+							size="xs"
 							type="button"
+							variant="destructive"
 						>
 							Delete
-						</button>
+						</Button>
 					</div>
 				</div>
 
@@ -1084,16 +1061,8 @@ function BrowsePage() {
 									onPreview={() => previewMutation.mutate(item)}
 									onReplace={() => openReplacePicker(item)}
 									onRename={() => {
-										const nextName = window.prompt("Rename object", item.name);
-										if (
-											!(nextName && bucket && provider && item.kind === "file")
-										) {
-											return;
-										}
-										renameMutation.mutate({
-											fromKey: item.key,
-											toKey: `${search.prefix}${nextName}`,
-										});
+										setRenameTarget(item);
+										setRenameValue(item.name);
 									}}
 									onSelect={(checked) =>
 										setSelectedKeys((current) =>
@@ -1206,9 +1175,9 @@ function BrowsePage() {
 																	}),
 																})
 															}
-															size="quiet"
+															size="xs"
 															type="button"
-															variant="quiet"
+															variant="ghost"
 														>
 															Open
 														</Button>
@@ -1217,51 +1186,37 @@ function BrowsePage() {
 															{item.isPreviewable ? (
 																<Button
 																	onClick={() => previewMutation.mutate(item)}
-																	size="quiet"
+																	size="xs"
 																	type="button"
-																	variant="quiet"
+																	variant="ghost"
 																>
 																	View
 																</Button>
-															) : (
-																<span
-																	aria-hidden="true"
-																	className="button-quiet-placeholder"
-																/>
-															)}
+															) : null}
 															<Button
 																onClick={() => downloadMutation.mutate(item)}
-																size="quiet"
+																size="xs"
 																type="button"
-																variant="quiet"
+																variant="ghost"
 															>
 																Download
 															</Button>
 															<Button
 																onClick={() => {
-																	const nextName = window.prompt(
-																		"Rename object",
-																		item.name,
-																	);
-																	if (!(nextName && provider && bucket)) {
-																		return;
-																	}
-																	renameMutation.mutate({
-																		fromKey: item.key,
-																		toKey: `${search.prefix}${nextName}`,
-																	});
+																	setRenameTarget(item);
+																	setRenameValue(item.name);
 																}}
-																size="quiet"
+																size="xs"
 																type="button"
-																variant="quiet"
+																variant="ghost"
 															>
 																Rename
 															</Button>
 															<Button
 																onClick={() => openReplacePicker(item)}
-																size="quiet"
+																size="xs"
 																type="button"
-																variant="quiet"
+																variant="ghost"
 															>
 																Replace
 															</Button>
@@ -1269,9 +1224,9 @@ function BrowsePage() {
 													)}
 													<Button
 														onClick={() => deleteMutation.mutate([item.key])}
-														size="quiet"
+														size="xs"
 														type="button"
-														variant="quiet-danger"
+														variant="destructive"
 													>
 														Delete
 													</Button>
@@ -1344,17 +1299,18 @@ function BrowsePage() {
 								<div className="section-label">Preview</div>
 								<div className="preview-title mt-2">{preview.fileName}</div>
 							</div>
-							<button
-								className="button-secondary"
+							<Button
 								onClick={() => {
 									URL.revokeObjectURL(preview.blobUrl);
 									setPreview(null);
 									setTextPreview(null);
 								}}
+								size="sm"
 								type="button"
+								variant="outline"
 							>
 								Close
-							</button>
+							</Button>
 						</div>
 						{previewRenderer(preview, textPreview)}
 					</div>
@@ -1414,56 +1370,57 @@ function ObjectCard(props: {
 						: `${formatBytes(item.size)} • ${formatTimestamp(item.lastModified)}`}
 				</div>
 			</div>
-			<div className="mt-4 flex flex-wrap gap-2">
+			<div className="mt-3 flex flex-wrap gap-1">
 				{item.kind === "folder" ? (
-					<button
-						className="button-secondary"
+					<Button
 						onClick={props.onOpenFolder}
+						size="xs"
 						type="button"
+						variant="outline"
 					>
 						Open
-					</button>
+					</Button>
 				) : (
 					<>
 						{item.isPreviewable ? (
 							<Button
 								onClick={props.onPreview}
-								size="quiet"
+								size="xs"
 								type="button"
-								variant="quiet"
+								variant="ghost"
 							>
 								View
 							</Button>
 						) : null}
 						<Button
 							onClick={props.onDownload}
-							size="quiet"
+							size="xs"
 							type="button"
-							variant="quiet"
+							variant="ghost"
 						>
 							Download
 						</Button>
 						<Button
 							onClick={props.onRename}
-							size="quiet"
+							size="xs"
 							type="button"
-							variant="quiet"
+							variant="ghost"
 						>
 							Rename
 						</Button>
 						<Button
 							onClick={props.onReplace}
-							size="quiet"
+							size="xs"
 							type="button"
-							variant="quiet"
+							variant="ghost"
 						>
 							Replace
 						</Button>
 						<Button
 							onClick={props.onShare}
-							size="quiet"
+							size="xs"
 							type="button"
-							variant="quiet"
+							variant="ghost"
 						>
 							Copy URL
 						</Button>
@@ -1471,9 +1428,9 @@ function ObjectCard(props: {
 				)}
 				<Button
 					onClick={props.onDelete}
-					size="quiet"
+					size="xs"
 					type="button"
-					variant="quiet-danger"
+					variant="destructive"
 				>
 					Delete
 				</Button>
