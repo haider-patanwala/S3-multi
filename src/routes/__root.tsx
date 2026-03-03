@@ -1,11 +1,8 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import {
-	createRootRouteWithContext,
-	Link,
-	Outlet,
-} from "@tanstack/react-router";
+import { createRootRouteWithContext, Link } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
+import { AppShell } from "../components/app-shell";
 
 export const Route = createRootRouteWithContext<{
 	queryClient: QueryClient;
@@ -13,9 +10,17 @@ export const Route = createRootRouteWithContext<{
 	component: RootComponent,
 	notFoundComponent: () => {
 		return (
-			<div>
-				<p>This is the notFoundComponent configured on root route</p>
-				<Link to="/">Start Over</Link>
+			<div className="mx-auto max-w-xl px-6 py-24 text-center">
+				<div className="section-label">404</div>
+				<p className="mt-3 font-display text-4xl text-stone-100 uppercase tracking-[0.18em]">
+					Route offline
+				</p>
+				<p className="mt-4 text-sm text-stone-400 leading-6">
+					The requested control surface does not exist.
+				</p>
+				<Link className="button-primary mt-6 inline-flex" to="/browse">
+					Return to browser
+				</Link>
 			</div>
 		);
 	},
@@ -24,36 +29,7 @@ export const Route = createRootRouteWithContext<{
 function RootComponent() {
 	return (
 		<>
-			<div className="flex gap-2 p-2 text-lg">
-				<Link
-					activeOptions={{ exact: true }}
-					activeProps={{
-						className: "font-bold",
-					}}
-					to="/"
-				>
-					Home
-				</Link>{" "}
-				<Link
-					activeProps={{
-						className: "font-bold",
-					}}
-					to="/posts"
-				>
-					Posts
-				</Link>{" "}
-				<Link
-					activeProps={{
-						className: "font-bold",
-					}}
-					// @ts-expect-error
-					to="/this-route-does-not-exist"
-				>
-					This Route Does Not Exist
-				</Link>
-			</div>
-			<hr />
-			<Outlet />
+			<AppShell />
 			<ReactQueryDevtools buttonPosition="top-right" />
 			<TanStackRouterDevtools position="bottom-right" />
 		</>
