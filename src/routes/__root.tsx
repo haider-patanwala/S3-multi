@@ -30,8 +30,12 @@ function RootComponent() {
 	return (
 		<>
 			<AppShell />
-			<ReactQueryDevtools buttonPosition="top-right" />
-			<TanStackRouterDevtools position="bottom-right" />
+			{import.meta.env.VITE_NODE_ENV === "development" && (
+				<>
+					<ReactQueryDevtools buttonPosition="top-right" />
+					<TanStackRouterDevtools position="bottom-right" />
+				</>
+			)}
 		</>
 	);
 }
