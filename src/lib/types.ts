@@ -8,6 +8,7 @@ export type ProviderConfig = {
 	region?: string;
 	accessKeyId: string;
 	secretAccessKey: string;
+	buckets?: string[];
 	defaultBucket?: string;
 	forcePathStyle?: boolean;
 	createdAt: number;

@@ -671,9 +671,13 @@ function BrowsePage() {
 	const bucketOptions = useMemo(
 		() =>
 			Array.from(
-				new Set([...(bucketsQuery.data ?? []), ...(bucket ? [bucket] : [])]),
+				new Set([
+					...(bucketsQuery.data ?? []),
+					...(provider?.buckets ?? []),
+					...(bucket ? [bucket] : []),
+				]),
 			).filter(Boolean),
-		[bucket, bucketsQuery.data],
+		[bucket, bucketsQuery.data, provider?.buckets],
 	);
 	const transferToasts = useMemo(
 		() =>

@@ -27,6 +27,7 @@ type FormState = {
 	region: string;
 	accessKeyId: string;
 	secretAccessKey: string;
+	buckets: string[];
 	defaultBucket: string;
 	forcePathStyle: boolean;
 	createdAt?: number;
@@ -39,6 +40,7 @@ const blankForm: FormState = {
 	region: "us-east-1",
 	accessKeyId: "",
 	secretAccessKey: "",
+	buckets: [],
 	defaultBucket: "",
 	forcePathStyle: false,
 };
@@ -55,6 +57,7 @@ function toForm(provider?: ProviderConfig): FormState {
 		region: provider.region ?? "",
 		accessKeyId: provider.accessKeyId,
 		secretAccessKey: provider.secretAccessKey,
+		buckets: provider.buckets ?? [],
 		defaultBucket: provider.defaultBucket ?? "",
 		forcePathStyle: provider.forcePathStyle ?? false,
 		createdAt: provider.createdAt,
@@ -62,6 +65,8 @@ function toForm(provider?: ProviderConfig): FormState {
 }
 
 function toDraft(form: FormState): ProviderDraft {
+	const buckets = form.buckets.filter(Boolean);
+	const defaultBucket = form.defaultBucket || buckets[0] || undefined;
 	return {
 		id: form.id ?? crypto.randomUUID(),
 		name: form.name,
@@ -70,7 +75,8 @@ function toDraft(form: FormState): ProviderDraft {
 		region: form.region || undefined,
 		accessKeyId: form.accessKeyId,
 		secretAccessKey: form.secretAccessKey,
-		defaultBucket: form.defaultBucket || undefined,
+		buckets: buckets.length ? buckets : undefined,
+		defaultBucket,
 		forcePathStyle: form.forcePathStyle,
 		createdAt: form.createdAt,
 	};
@@ -99,6 +105,7 @@ function ProvidersPage() {
 	const providers = providersQuery.data ?? [];
 	const [selectedId, setSelectedId] = useState<string>();
 	const [form, setForm] = useState<FormState>(blankForm);
+	const [bucketInput, setBucketInput] = useState("");
 	const [notice, setNotice] = useState<string>(
 		"Add a provider, test the connection, then save it locally.",
 	);
@@ -112,6 +119,7 @@ function ProvidersPage() {
 	useEffect(() => {
 		const selected = providers.find((provider) => provider.id === selectedId);
 		setForm(toForm(selected));
+		setBucketInput("");
 	}, [providers, selectedId]);
 
 	const saveMutation = useMutation({
@@ -280,9 +288,11 @@ function ProvidersPage() {
 											) : null}
 										</div>
 										<div className="provider-card-note">
-											{provider.defaultBucket
-												? `Pinned bucket: ${provider.defaultBucket}`
-												: "Bucket picked from browser context"}
+											{provider.buckets?.length
+												? `${provider.buckets.length} bucket${provider.buckets.length > 1 ? "s" : ""}${provider.defaultBucket ? ` · default: ${provider.defaultBucket}` : ""}`
+												: provider.defaultBucket
+													? `Pinned bucket: ${provider.defaultBucket}`
+													: "Bucket picked from browser context"}
 										</div>
 										<div className="provider-card-actions">
 											<button
@@ -435,25 +445,109 @@ function ProvidersPage() {
 								value={form.endpoint}
 							/>
 						</label>
-						<label className="field">
-							<span>Default bucket</span>
-							<input
-								className="input"
-								onChange={(event) =>
-									setForm((current) => ({
-										...current,
-										defaultBucket: event.target.value,
-									}))
-								}
-								placeholder="Optional pinned bucket"
-								value={form.defaultBucket}
-							/>
+						<div className="field">
+							<span>Buckets</span>
+							<div className="flex gap-2">
+								<input
+									className="input flex-1"
+									onChange={(event) => setBucketInput(event.target.value)}
+									onKeyDown={(event) => {
+										if (event.key === "Enter") {
+											event.preventDefault();
+											const name = bucketInput.trim();
+											if (name && !form.buckets.includes(name)) {
+												setForm((current) => ({
+													...current,
+													buckets: [...current.buckets, name],
+													defaultBucket: current.defaultBucket || name,
+												}));
+												setBucketInput("");
+											}
+										}
+									}}
+									placeholder="Bucket name"
+									value={bucketInput}
+								/>
+								<button
+									className="button-secondary"
+									onClick={() => {
+										const name = bucketInput.trim();
+										if (name && !form.buckets.includes(name)) {
+											setForm((current) => ({
+												...current,
+												buckets: [...current.buckets, name],
+												defaultBucket: current.defaultBucket || name,
+											}));
+											setBucketInput("");
+										}
+									}}
+									type="button"
+								>
+									Add
+								</button>
+							</div>
+							{form.buckets.length > 0 && (
+								<div className="stack-list mt-2">
+									{form.buckets.map((name) => {
+										const isDefault = name === form.defaultBucket;
+										return (
+											<div
+												className="flex items-center justify-between gap-2 px-3 py-2"
+												key={name}
+											>
+												<div className="flex items-center gap-2">
+													<span>{name}</span>
+													{isDefault && (
+														<span className="pill pill-active">Default</span>
+													)}
+												</div>
+												<div className="flex gap-1">
+													{!isDefault && (
+														<button
+															className="button-quiet"
+															onClick={() =>
+																setForm((current) => ({
+																	...current,
+																	defaultBucket: name,
+																}))
+															}
+															type="button"
+														>
+															Set default
+														</button>
+													)}
+													<button
+														className="button-danger"
+														onClick={() =>
+															setForm((current) => {
+																const next = current.buckets.filter(
+																	(b) => b !== name,
+																);
+																return {
+																	...current,
+																	buckets: next,
+																	defaultBucket:
+																		current.defaultBucket === name
+																			? next[0] ?? ""
+																			: current.defaultBucket,
+																};
+															})
+														}
+														type="button"
+													>
+														Remove
+													</button>
+												</div>
+											</div>
+										);
+									})}
+								</div>
+							)}
 							<span className="field-note">
-								Recommended for R2 and browser-only setups. It lets the app test
-								the connection with `HeadBucket` instead of relying on bucket
-								listing.
+								Pre-define buckets for this provider. Recommended for R2 and
+								custom endpoints where bucket listing may not be available.
 							</span>
-						</label>
+						</div>
 						<label className="field">
 							<span>Path style</span>
 							<div className="toggle-row">
