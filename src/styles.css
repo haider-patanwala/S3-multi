@@ -306,6 +306,8 @@ textarea {
 	gap: 0;
 	align-content: start;
 	background: var(--bg);
+	overflow-y: auto;
+	height: 100vh;
 }
 
 .overview-panel {
@@ -756,7 +758,32 @@ textarea {
 .browser-kpi-grid {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
-	gap: 0.65rem;
+	gap: 0.5rem;
+}
+
+.browser-kpi-inline {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.browser-kpi-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.3rem 0.6rem;
+	font-size: 0.72rem;
+	line-height: 1;
+	color: var(--text-soft);
+	background: var(--panel-soft);
+	border: 1px solid var(--stroke);
+	border-radius: 999px;
+}
+
+.browser-kpi-chip strong {
+	font-weight: 700;
+	color: var(--text);
 }
 
 .browser-workspace {
@@ -1223,16 +1250,23 @@ textarea {
 @media (max-width: 1200px) {
 	.workspace-shell {
 		grid-template-columns: 1fr;
+		grid-template-rows: auto 1fr;
 	}
 
 	.shell-sidebar {
-		position: relative;
+		position: sticky;
 		top: 0;
+		z-index: 30;
 		height: auto;
 		flex-direction: row;
 		align-items: center;
 		border-right: none;
 		border-bottom: 1px solid var(--stroke);
+	}
+
+	.shell-stage {
+		height: auto;
+		overflow-y: visible;
 	}
 
 	.shell-brand {

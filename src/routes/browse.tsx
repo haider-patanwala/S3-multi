@@ -100,11 +100,7 @@ function previewRenderer(
 	}
 	if (preview.contentType.startsWith("video/")) {
 		return (
-			<video
-				className="max-h-[70vh] rounded-lg"
-				controls
-				src={preview.blobUrl}
-			>
+			<video className="max-h-[70vh] rounded-lg" controls src={preview.blobUrl}>
 				<track
 					default
 					kind="captions"
@@ -123,11 +119,7 @@ function previewRenderer(
 		preview.contentType.includes("xml") ||
 		preview.contentType.includes("json")
 	) {
-		return (
-			<pre className="preview-code">
-				{textPreview}
-			</pre>
-		);
+		return <pre className="preview-code">{textPreview}</pre>;
 	}
 	return (
 		<iframe
@@ -667,7 +659,6 @@ function BrowsePage() {
 		[objects],
 	);
 
-	const queueSnapshot = runningTransfers.slice(0, 4);
 	const bucketOptions = useMemo(
 		() =>
 			Array.from(
@@ -762,7 +753,7 @@ function BrowsePage() {
 	}
 
 	return (
-		<div className="space-y-6">
+		<div className="space-y-4">
 			<input
 				className="sr-only"
 				onChange={(event) => {
@@ -787,80 +778,63 @@ function BrowsePage() {
 				ref={replaceInputRef}
 				type="file"
 			/>
-			<section className="control-panel browser-dashboard px-4 py-4 lg:px-5 lg:py-5">
-				<div className="browser-dashboard-top">
-					<div>
-						<div className="section-label">Browser dashboard</div>
-						<h2 className="page-title mt-2">Bucket navigation</h2>
-						<p className="page-copy mt-3 max-w-3xl">
-							Dense controls, quick file actions, and live object state for the
-							current bucket and prefix.
-						</p>
-					</div>
-					<div className="flex flex-wrap gap-2">
-						<button
-							className={cn(
-								"toggle-button",
-								search.view === "list" && "toggle-button-active",
-							)}
-							onClick={() =>
-								void navigate({
-									search: (current) => ({
-										...current,
-										view: "list" satisfies BrowserView,
-									}),
-								})
-							}
-							type="button"
-						>
-							List
-						</button>
-						<button
-							className={cn(
-								"toggle-button",
-								search.view === "grid" && "toggle-button-active",
-							)}
-							onClick={() =>
-								void navigate({
-									search: (current) => ({
-										...current,
-										view: "grid" satisfies BrowserView,
-									}),
-								})
-							}
-							type="button"
-						>
-							Grid
-						</button>
-					</div>
-				</div>
 
-				<div className="browser-kpi-grid">
-					<div className="browser-kpi">
-						<div className="browser-kpi-label">Bucket</div>
-						<div className="browser-kpi-value">{bucket ?? "None"}</div>
-					</div>
-					<div className="browser-kpi">
-						<div className="browser-kpi-label">Prefix</div>
-						<div className="browser-kpi-value">{search.prefix || "/"}</div>
-					</div>
-					<div className="browser-kpi">
-						<div className="browser-kpi-label">Visible</div>
-						<div className="browser-kpi-value">{objects.length}</div>
-						<div className="browser-kpi-meta">
-							{folderCount} folders / {fileCount} files
-						</div>
-					</div>
-					<div className="browser-kpi">
-						<div className="browser-kpi-label">Weight</div>
-						<div className="browser-kpi-value">{formatBytes(visibleBytes)}</div>
-						<div className="browser-kpi-meta">
-							{runningTransfers.length} active transfer
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<div className="browser-kpi-inline">
+					<span className="browser-kpi-chip">
+						<strong>{bucket ?? "None"}</strong>
+					</span>
+					<span className="browser-kpi-chip">{search.prefix || "/"}</span>
+					<span className="browser-kpi-chip">
+						<strong>{objects.length}</strong> objects
+					</span>
+					<span className="browser-kpi-chip">
+						<strong>{formatBytes(visibleBytes)}</strong>
+					</span>
+					{runningTransfers.length > 0 && (
+						<span className="browser-kpi-chip">
+							<strong>{runningTransfers.length}</strong> transfer
 							{runningTransfers.length === 1 ? "" : "s"}
-						</div>
-					</div>
+						</span>
+					)}
 				</div>
-			</section>
+				<div className="flex gap-1">
+					<button
+						className={cn(
+							"toggle-button",
+							search.view === "list" && "toggle-button-active",
+						)}
+						onClick={() =>
+							void navigate({
+								search: (current) => ({
+									...current,
+									view: "list" satisfies BrowserView,
+								}),
+							})
+						}
+						type="button"
+					>
+						List
+					</button>
+					<button
+						className={cn(
+							"toggle-button",
+							search.view === "grid" && "toggle-button-active",
+						)}
+						onClick={() =>
+							void navigate({
+								search: (current) => ({
+									...current,
+									view: "grid" satisfies BrowserView,
+								}),
+							})
+						}
+						type="button"
+					>
+						Grid
+					</button>
+				</div>
+			</div>
 
 			<section className="control-panel browser-workspace px-4 py-4 lg:px-5 lg:py-5">
 				<div className="browser-toolbar">
@@ -947,9 +921,7 @@ function BrowsePage() {
 					</div>
 
 					<div className="browser-path-panel">
-						<div className="browser-path-label">
-							Path
-						</div>
+						<div className="browser-path-label">Path</div>
 						<div className="mt-2 flex flex-wrap items-center gap-2">
 							<button
 								className="crumb"
@@ -1066,21 +1038,10 @@ function BrowsePage() {
 					</div>
 				</div>
 
-				<div className="browser-caption-row">
-					<span>{selectedKeys.length} selected</span>
-					<span>
-						{queueSnapshot[0]
-							? `Latest transfer: ${queueSnapshot[0].fileName}`
-							: "Transfer queue idle"}
-					</span>
-					<span>Replace keeps the path and adopts the incoming extension</span>
-					<span>Preview is available only for text, image, and video files</span>
-				</div>
-
 				{/* biome-ignore lint/a11y/noStaticElementInteractions: this section is a drag-and-drop target for file uploads, not a click target */}
 				<section
 					className={cn(
-						"file-dropzone mt-4",
+						"file-dropzone",
 						isDragActive && "file-dropzone-active",
 					)}
 					onDragEnter={handleDragEnter}
@@ -1125,12 +1086,7 @@ function BrowsePage() {
 									onRename={() => {
 										const nextName = window.prompt("Rename object", item.name);
 										if (
-											!(
-												nextName &&
-												bucket &&
-												provider &&
-												item.kind === "file"
-											)
+											!(nextName && bucket && provider && item.kind === "file")
 										) {
 											return;
 										}
@@ -1172,7 +1128,10 @@ function BrowsePage() {
 								<div>Updated</div>
 								<div className="text-right">Actions</div>
 							</div>
-							<div className="max-h-[720px] overflow-auto" ref={parentRef}>
+							<div
+								className="max-h-[calc(100vh-320px)] min-h-[400px] overflow-auto"
+								ref={parentRef}
+							>
 								<div
 									className="relative"
 									style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
@@ -1383,9 +1342,7 @@ function BrowsePage() {
 						<div className="mb-4 flex items-center justify-between gap-4">
 							<div>
 								<div className="section-label">Preview</div>
-								<div className="preview-title mt-2">
-									{preview.fileName}
-								</div>
+								<div className="preview-title mt-2">{preview.fileName}</div>
 							</div>
 							<button
 								className="button-secondary"
@@ -1443,7 +1400,7 @@ function ObjectCard(props: {
 			</div>
 			<div className="mt-4">
 				<button
-					className="object-card-title line-clamp-2 text-left"
+					className="truncate object-card-title text-left"
 					onClick={
 						item.kind === "folder" ? props.onOpenFolder : props.onPreview
 					}
@@ -1451,7 +1408,7 @@ function ObjectCard(props: {
 				>
 					{item.name}
 				</button>
-				<div className="object-card-meta mt-2">
+				<div className="mt-2 object-card-meta">
 					{item.kind === "folder"
 						? "Folder marker / prefix"
 						: `${formatBytes(item.size)} • ${formatTimestamp(item.lastModified)}`}
