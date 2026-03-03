@@ -1,7 +1,9 @@
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 import type { ProviderType } from "./types";
 
-export function cn(...values: Array<string | false | null | undefined>) {
-	return values.filter(Boolean).join(" ");
+export function cn(...inputs: ClassValue[]) {
+	return twMerge(clsx(inputs));
 }
 
 export function formatBytes(value?: number) {

@@ -11,6 +11,14 @@ import {
 	useState,
 } from "react";
 import { z } from "zod";
+import { Button } from "../components/ui/button";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "../components/ui/select";
 import {
 	getActiveProviderId,
 	setActiveProviderId,
@@ -169,7 +177,6 @@ function BrowsePage() {
 		recentBucketQuery.data ??
 		bucketsQuery.data?.[0];
 	const [searchInput, setSearchInput] = useState("");
-	const [bucketInput, setBucketInput] = useState(bucket ?? "");
 	const deferredSearch = useDeferredValue(searchInput);
 	const objectListQuery = useQuery(
 		objectQueryOptions({
@@ -197,10 +204,6 @@ function BrowsePage() {
 		estimateSize: () => 82,
 		overscan: 8,
 	});
-
-	useEffect(() => {
-		setBucketInput(bucket ?? "");
-	}, [bucket]);
 
 	useEffect(() => {
 		if (provider && search.providerId !== provider.id) {
@@ -649,6 +652,13 @@ function BrowsePage() {
 	}, [search.prefix]);
 
 	const queueSnapshot = runningTransfers.slice(0, 4);
+	const bucketOptions = useMemo(
+		() =>
+			Array.from(
+				new Set([...(bucketsQuery.data ?? []), ...(bucket ? [bucket] : [])]),
+			).filter(Boolean),
+		[bucket, bucketsQuery.data],
+	);
 	const transferToasts = useMemo(
 		() =>
 			(transfersQuery.data ?? [])
@@ -662,22 +672,6 @@ function BrowsePage() {
 
 	const isFileDrag = (dataTransfer?: DataTransfer | null) =>
 		Boolean(dataTransfer?.types.includes("Files"));
-
-	const applyBucketInput = () => {
-		const nextBucket = bucketInput.trim();
-		if (!nextBucket) {
-			setStatusMessage("Enter a bucket name to browse.");
-			return;
-		}
-		void navigate({
-			search: (current) => ({
-				...current,
-				bucket: nextBucket,
-				prefix: "",
-			}),
-		});
-		setStatusMessage(`Opened bucket ${nextBucket}.`);
-	};
 
 	const openReplacePicker = (item: ObjectEntry) => {
 		setReplaceTarget(item);
@@ -827,12 +821,13 @@ function BrowsePage() {
 					</div>
 
 					<div className="compact-toolbar">
-						<label className="field">
+						<div className="field">
 							<span>Provider</span>
-							<select
-								className="select"
-								onChange={(event) => {
-									const nextProviderId = event.target.value;
+							<Select
+								onValueChange={(nextProviderId) => {
+									if (!nextProviderId) {
+										return;
+									}
 									startTransition(() => {
 										void navigate({
 											search: () => ({
@@ -848,46 +843,51 @@ function BrowsePage() {
 										queryKey: ["providers", "active"],
 									});
 								}}
-								value={provider?.id ?? ""}
+								value={provider?.id}
 							>
-								{providers.map((entry) => (
-									<option key={entry.id} value={entry.id}>
-										{entry.name}
-									</option>
-								))}
-							</select>
-						</label>
-
-						<label className="field">
-							<span>Bucket</span>
-							<div className="flex gap-2">
-								<input
-									className="input"
-									list="bucket-suggestions"
-									onChange={(event) => setBucketInput(event.target.value)}
-									onKeyDown={(event) => {
-										if (event.key === "Enter") {
-											event.preventDefault();
-											applyBucketInput();
-										}
-									}}
-									placeholder="Enter bucket name"
-									value={bucketInput}
-								/>
-								<datalist id="bucket-suggestions">
-									{(bucketsQuery.data ?? []).map((entry) => (
-										<option key={entry} value={entry} />
+								<SelectTrigger className="w-full">
+									<SelectValue placeholder="Select provider" />
+								</SelectTrigger>
+								<SelectContent align="start">
+									{providers.map((entry) => (
+										<SelectItem key={entry.id} value={entry.id}>
+											{entry.name}
+										</SelectItem>
 									))}
-								</datalist>
-								<button
-									className="button-secondary whitespace-nowrap"
-									onClick={applyBucketInput}
-									type="button"
-								>
-									Open
-								</button>
-							</div>
-						</label>
+								</SelectContent>
+							</Select>
+						</div>
+
+						<div className="field">
+							<span>Bucket</span>
+							<Select
+								onValueChange={(nextBucket) => {
+									if (!nextBucket) {
+										return;
+									}
+									void navigate({
+										search: (current) => ({
+											...current,
+											bucket: nextBucket,
+											prefix: "",
+										}),
+									});
+									setStatusMessage(`Opened bucket ${nextBucket}.`);
+								}}
+								value={bucket}
+							>
+								<SelectTrigger className="w-full">
+									<SelectValue placeholder="Select bucket" />
+								</SelectTrigger>
+								<SelectContent align="start">
+									{bucketOptions.map((entry) => (
+										<SelectItem key={entry} value={entry}>
+											{entry}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
 
 						<label className="field">
 							<span>Search</span>
@@ -939,8 +939,8 @@ function BrowsePage() {
 						</div>
 						{bucketsQuery.data?.length ? null : (
 							<div className="mt-3 text-stone-500 text-xs leading-5">
-								Bucket suggestions may be empty when the provider blocks
-								browser-based account listing. Manual bucket entry still works.
+								No buckets are available to show. If this is R2, account-level
+								listing may be blocked by browser CORS.
 							</div>
 						)}
 					</div>
@@ -1033,7 +1033,7 @@ function BrowsePage() {
 							<span className="pill">Latest: {queueSnapshot[0].fileName}</span>
 						) : null}
 						<span className="pill">
-							Replace uploads write to the existing key
+							Replace keeps the path and adopts the incoming extension
 						</span>
 						<span className="pill">
 							View only appears for text, image, and video files
@@ -1204,8 +1204,7 @@ function BrowsePage() {
 													</div>
 													<div className="table-actions">
 														{item.kind === "folder" ? (
-															<button
-																className="button-quiet"
+															<Button
 																onClick={() =>
 																	void navigate({
 																		search: (current) => ({
@@ -1214,30 +1213,38 @@ function BrowsePage() {
 																		}),
 																	})
 																}
+																size="quiet"
 																type="button"
+																variant="quiet"
 															>
 																Open
-															</button>
+															</Button>
 														) : (
 															<>
 																{item.isPreviewable ? (
-																	<button
-																		className="button-quiet"
+																	<Button
 																		onClick={() => previewMutation.mutate(item)}
+																		size="quiet"
 																		type="button"
+																		variant="quiet"
 																	>
 																		View
-																	</button>
-																) : null}
-																<button
-																	className="button-quiet"
+																	</Button>
+																) : (
+																	<span
+																		aria-hidden="true"
+																		className="button-quiet-placeholder"
+																	/>
+																)}
+																<Button
 																	onClick={() => downloadMutation.mutate(item)}
+																	size="quiet"
 																	type="button"
+																	variant="quiet"
 																>
 																	Download
-																</button>
-																<button
-																	className="button-quiet"
+																</Button>
+																<Button
 																	onClick={() => {
 																		const nextName = window.prompt(
 																			"Rename object",
@@ -1251,26 +1258,30 @@ function BrowsePage() {
 																			toKey: `${search.prefix}${nextName}`,
 																		});
 																	}}
+																	size="quiet"
 																	type="button"
+																	variant="quiet"
 																>
 																	Rename
-																</button>
-																<button
-																	className="button-quiet"
+																</Button>
+																<Button
 																	onClick={() => openReplacePicker(item)}
+																	size="quiet"
 																	type="button"
+																	variant="quiet"
 																>
 																	Replace
-																</button>
+																</Button>
 															</>
 														)}
-														<button
-															className="button-quiet button-quiet-danger"
+														<Button
 															onClick={() => deleteMutation.mutate([item.key])}
+															size="quiet"
 															type="button"
+															variant="quiet-danger"
 														>
 															Delete
-														</button>
+														</Button>
 													</div>
 												</div>
 											);
@@ -1425,51 +1436,57 @@ function ObjectCard(props: {
 				) : (
 					<>
 						{item.isPreviewable ? (
-							<button
-								className="button-quiet"
+							<Button
 								onClick={props.onPreview}
+								size="quiet"
 								type="button"
+								variant="quiet"
 							>
 								View
-							</button>
+							</Button>
 						) : null}
-						<button
-							className="button-quiet"
+						<Button
 							onClick={props.onDownload}
+							size="quiet"
 							type="button"
+							variant="quiet"
 						>
 							Download
-						</button>
-						<button
-							className="button-quiet"
+						</Button>
+						<Button
 							onClick={props.onRename}
+							size="quiet"
 							type="button"
+							variant="quiet"
 						>
 							Rename
-						</button>
-						<button
-							className="button-quiet"
+						</Button>
+						<Button
 							onClick={props.onReplace}
+							size="quiet"
 							type="button"
+							variant="quiet"
 						>
 							Replace
-						</button>
-						<button
-							className="button-quiet"
+						</Button>
+						<Button
 							onClick={props.onShare}
+							size="quiet"
 							type="button"
+							variant="quiet"
 						>
 							Copy URL
-						</button>
+						</Button>
 					</>
 				)}
-				<button
-					className="button-quiet button-quiet-danger"
+				<Button
 					onClick={props.onDelete}
+					size="quiet"
 					type="button"
+					variant="quiet-danger"
 				>
 					Delete
-				</button>
+				</Button>
 			</div>
 		</div>
 	);

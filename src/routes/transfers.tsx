@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { formatBytes, formatTimestamp } from "@/lib/utils";
 import { transferQueryOptions } from "../lib/query-options";
 import {
 	clearAllTransfers,
 	clearCompletedTransfers,
 	deleteTransfer,
 } from "../lib/transfers";
-import { formatBytes, formatTimestamp } from "../lib/utils";
 
 export const Route = createFileRoute("/transfers")({
 	component: TransfersPage,

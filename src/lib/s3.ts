@@ -136,15 +136,16 @@ export async function testConnection(
 }
 
 export async function listBuckets(provider: ProviderConfig) {
-	if (provider.defaultBucket) {
-		return [provider.defaultBucket];
-	}
 	const client = createClient(provider);
 	try {
 		const response = await client.send(new ListBucketsCommand({}));
-		return (response.Buckets ?? [])
+		const buckets = (response.Buckets ?? [])
 			.map((bucket) => bucket.Name)
 			.filter(Boolean) as string[];
+		if (provider.defaultBucket && !buckets.includes(provider.defaultBucket)) {
+			return [provider.defaultBucket, ...buckets];
+		}
+		return buckets;
 	} catch (error) {
 		if (
 			error instanceof Error &&
@@ -152,7 +153,7 @@ export async function listBuckets(provider: ProviderConfig) {
 				error.message,
 			)
 		) {
-			return [];
+			return provider.defaultBucket ? [provider.defaultBucket] : [];
 		}
 		throw error;
 	}
