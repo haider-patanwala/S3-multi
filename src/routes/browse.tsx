@@ -1316,6 +1316,158 @@ function BrowsePage() {
 					</div>
 				</div>
 			) : null}
+
+			<Dialog
+				open={!!renameTarget}
+				onOpenChange={(open) => {
+					if (!open) {
+						setRenameTarget(null);
+						setRenameValue("");
+					}
+				}}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Rename object</DialogTitle>
+						<DialogDescription>
+							Enter a new name for {renameTarget?.name}.
+						</DialogDescription>
+					</DialogHeader>
+					<form
+						onSubmit={(event) => {
+							event.preventDefault();
+							if (!(renameValue.trim() && provider && bucket && renameTarget)) {
+								return;
+							}
+							renameMutation.mutate({
+								fromKey: renameTarget.key,
+								toKey: `${search.prefix}${renameValue.trim()}`,
+							});
+							setRenameTarget(null);
+							setRenameValue("");
+						}}
+					>
+						<Input
+							autoFocus
+							onChange={(event) => setRenameValue(event.target.value)}
+							placeholder="New name"
+							value={renameValue}
+						/>
+						<DialogFooter className="mt-4">
+							<Button
+								onClick={() => {
+									setRenameTarget(null);
+									setRenameValue("");
+								}}
+								size="xs"
+								type="button"
+								variant="outline"
+							>
+								Cancel
+							</Button>
+							<Button disabled={!renameValue.trim()} size="xs" type="submit" variant="default">
+								Rename
+							</Button>
+						</DialogFooter>
+					</form>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>New folder</DialogTitle>
+						<DialogDescription>
+							Create a new folder in {search.prefix || "/"}.
+						</DialogDescription>
+					</DialogHeader>
+					<form
+						onSubmit={(event) => {
+							event.preventDefault();
+							if (!(folderName.trim() && provider && bucket)) {
+								return;
+							}
+							const name = folderName.trim();
+							void createFolder(
+								provider,
+								bucket,
+								`${search.prefix}${name}/`,
+							)
+								.then(async () => {
+									setStatusMessage(`Created folder ${name}.`);
+									await queryClient.invalidateQueries({
+										queryKey: ["objects", provider.id, bucket],
+									});
+								})
+								.catch((error) => {
+									setStatusMessage(
+										error instanceof Error
+											? error.message
+											: "Folder creation failed.",
+									);
+								});
+							setFolderDialogOpen(false);
+							setFolderName("");
+						}}
+					>
+						<Input
+							autoFocus
+							onChange={(event) => setFolderName(event.target.value)}
+							placeholder="Folder name"
+							value={folderName}
+						/>
+						<DialogFooter className="mt-4">
+							<Button
+								onClick={() => {
+									setFolderDialogOpen(false);
+									setFolderName("");
+								}}
+								size="xs"
+								type="button"
+								variant="outline"
+							>
+								Cancel
+							</Button>
+							<Button disabled={!folderName.trim()} size="xs" type="submit" variant="default">
+								Create
+							</Button>
+						</DialogFooter>
+					</form>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete items</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to delete {selectedKeys.length} selected item
+							{selectedKeys.length > 1 ? "s" : ""}? This action cannot be undone.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							onClick={() => setDeleteConfirmOpen(false)}
+							size="xs"
+							type="button"
+							variant="outline"
+						>
+							Cancel
+						</Button>
+						<Button
+							onClick={() => {
+								deleteMutation.mutate(selectedKeys);
+								setDeleteConfirmOpen(false);
+							}}
+							size="xs"
+							type="button"
+							variant="destructive"
+						>
+							Delete
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }
