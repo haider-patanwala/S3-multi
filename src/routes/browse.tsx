@@ -1,8 +1,20 @@
+import {
+	CloudDownloadIcon,
+	CopyLinkIcon,
+	DeleteThrowIcon,
+	EyeIcon,
+	FileEditIcon,
+	FolderOpenIcon,
+	MoreVerticalIcon,
+	PencilIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
 	type DragEvent,
+	Fragment,
 	startTransition,
 	useDeferredValue,
 	useEffect,
@@ -20,6 +32,13 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "../components/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
 import {
 	Select,
@@ -28,6 +47,12 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "../components/ui/select";
+import {
+	Table,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "../components/ui/table";
 import {
 	getActiveProviderId,
 	setActiveProviderId,
@@ -751,7 +776,13 @@ function BrowsePage() {
 					stores credentials only in the browser and uses direct S3 API
 					requests.
 				</p>
-				<Link className={cn(buttonVariants({ size: "sm", variant: "default" }), "mt-6")} to="/providers">
+				<Link
+					className={cn(
+						buttonVariants({ size: "sm", variant: "default" }),
+						"mt-6",
+					)}
+					to="/providers"
+				>
 					Open providers
 				</Link>
 			</section>
@@ -786,11 +817,51 @@ function BrowsePage() {
 			/>
 
 			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="browser-kpi-inline">
-					<span className="browser-kpi-chip">
-						<strong>{bucket ?? "None"}</strong>
-					</span>
-					<span className="browser-kpi-chip">{search.prefix || "/"}</span>
+				<div className="flex flex-wrap items-center gap-2">
+					<div className="browser-breadcrumbs">
+						<Button
+							className="text-neutral-300 text-xs!"
+							variant="link"
+							size="xs"
+							onClick={() =>
+								void navigate({
+									search: (current) => ({ ...current, prefix: "" }),
+								})
+							}
+							type="button"
+						>
+							{bucket ?? "root"}
+						</Button>
+						{pathSegments.length > 0 && (
+							<span className="browser-breadcrumb-separator">/</span>
+						)}
+						{pathSegments.map((segment, index) => {
+							const nextPrefix = `${pathSegments.slice(0, index + 1).join("/")}/`;
+							return (
+								<Fragment key={nextPrefix}>
+									<Button
+										className="text-neutral-300 text-xs!"
+										variant="link"
+										size="xs"
+										onClick={() =>
+											void navigate({
+												search: (current) => ({
+													...current,
+													prefix: nextPrefix,
+												}),
+											})
+										}
+										type="button"
+									>
+										{segment}
+									</Button>
+									{index < pathSegments.length - 1 && (
+										<span className="browser-breadcrumb-separator">/</span>
+									)}
+								</Fragment>
+							);
+						})}
+					</div>
 					<span className="browser-kpi-chip">
 						<strong>{objects.length}</strong> objects
 					</span>
@@ -804,41 +875,89 @@ function BrowsePage() {
 						</span>
 					)}
 				</div>
-				<div className="flex gap-1">
-					<button
-						className={cn(
-							"toggle-button",
-							search.view === "list" && "toggle-button-active",
-						)}
-						onClick={() =>
-							void navigate({
-								search: (current) => ({
-									...current,
-									view: "list" satisfies BrowserView,
-								}),
-							})
-						}
-						type="button"
-					>
-						List
-					</button>
-					<button
-						className={cn(
-							"toggle-button",
-							search.view === "grid" && "toggle-button-active",
-						)}
-						onClick={() =>
-							void navigate({
-								search: (current) => ({
-									...current,
-									view: "grid" satisfies BrowserView,
-								}),
-							})
-						}
-						type="button"
-					>
-						Grid
-					</button>
+				<div className="flex flex-wrap items-center justify-end gap-2">
+					<div className="browser-actions">
+						<input
+							className="sr-only"
+							id="upload-input"
+							multiple
+							onChange={(event) => {
+								const files = Array.from(event.target.files ?? []);
+								if (files.length) {
+									uploadMutation.mutate(files);
+								}
+								event.target.value = "";
+							}}
+							type="file"
+						/>
+						<label
+							className={cn(
+								buttonVariants({ size: "xs", variant: "default" }),
+								"cursor-pointer",
+							)}
+							htmlFor="upload-input"
+						>
+							Upload
+						</label>
+						<Button
+							onClick={() => {
+								setFolderName("");
+								setFolderDialogOpen(true);
+							}}
+							size="xs"
+							className="text-xs!"
+							type="button"
+							variant="outline"
+						>
+							New folder
+						</Button>
+						<Button
+							disabled={!selectedKeys.length}
+							onClick={() => setDeleteConfirmOpen(true)}
+							size="xs"
+							className="text-xs!"
+							type="button"
+							variant="destructive"
+						>
+							Delete
+						</Button>
+					</div>
+					<div className="flex gap-1">
+						<button
+							className={cn(
+								"toggle-button",
+								search.view === "list" && "toggle-button-active",
+							)}
+							onClick={() =>
+								void navigate({
+									search: (current) => ({
+										...current,
+										view: "list" satisfies BrowserView,
+									}),
+								})
+							}
+							type="button"
+						>
+							List
+						</button>
+						<button
+							className={cn(
+								"toggle-button",
+								search.view === "grid" && "toggle-button-active",
+							)}
+							onClick={() =>
+								void navigate({
+									search: (current) => ({
+										...current,
+										view: "grid" satisfies BrowserView,
+									}),
+								})
+							}
+							type="button"
+						>
+							Grid
+						</button>
+					</div>
 				</div>
 			</div>
 
@@ -926,92 +1045,13 @@ function BrowsePage() {
 						</label>
 					</div>
 
-					<div className="browser-path-panel">
-						<div className="browser-path-label">Path</div>
-						<div className="mt-2 flex flex-wrap items-center gap-2">
-							<button
-								className="crumb"
-								onClick={() =>
-									void navigate({
-										search: (current) => ({ ...current, prefix: "" }),
-									})
-								}
-								type="button"
-							>
-								{bucket ?? "root"}
-							</button>
-							{pathSegments.map((segment, index) => {
-								const nextPrefix = `${pathSegments.slice(0, index + 1).join("/")}/`;
-								return (
-									<button
-										className="crumb"
-										key={nextPrefix}
-										onClick={() =>
-											void navigate({
-												search: (current) => ({
-													...current,
-													prefix: nextPrefix,
-												}),
-											})
-										}
-										type="button"
-									>
-										{segment}
-									</button>
-								);
-							})}
-						</div>
+					<div>
 						{bucketsQuery.data?.length ? null : (
 							<div className="field-note mt-3">
 								No buckets are available to show. If this is R2, account-level
 								listing may be blocked by browser CORS.
 							</div>
 						)}
-					</div>
-				</div>
-
-				<div className="browser-status-row">
-					<div className="status-banner">{statusMessage}</div>
-					<div className="browser-actions">
-						<input
-							className="sr-only"
-							id="upload-input"
-							multiple
-							onChange={(event) => {
-								const files = Array.from(event.target.files ?? []);
-								if (files.length) {
-									uploadMutation.mutate(files);
-								}
-								event.target.value = "";
-							}}
-							type="file"
-						/>
-						<label
-							className={cn(buttonVariants({ size: "xs", variant: "default" }), "cursor-pointer")}
-							htmlFor="upload-input"
-						>
-							Upload
-						</label>
-						<Button
-							onClick={() => {
-								setFolderName("");
-								setFolderDialogOpen(true);
-							}}
-							size="xs"
-							type="button"
-							variant="outline"
-						>
-							New folder
-						</Button>
-						<Button
-							disabled={!selectedKeys.length}
-							onClick={() => setDeleteConfirmOpen(true)}
-							size="xs"
-							type="button"
-							variant="destructive"
-						>
-							Delete
-						</Button>
 					</div>
 				</div>
 
@@ -1090,13 +1130,20 @@ function BrowsePage() {
 							))}
 						</div>
 					) : (
-						<div className="table-list">
-							<div className="table-header">
-								<div className="pr-2">Name</div>
-								<div>Size</div>
-								<div>Updated</div>
-								<div className="text-right">Actions</div>
-							</div>
+						<div className="overflow-hidden rounded-lg border border-border">
+							<Table>
+								<TableHeader>
+									<TableRow className="border-b-border hover:bg-transparent">
+										<TableHead className="w-8 px-3" />
+										<TableHead>Name</TableHead>
+										<TableHead className="w-24">Size</TableHead>
+										<TableHead className="w-36">Updated</TableHead>
+										<TableHead className="w-24 pr-3 text-right">
+											Actions
+										</TableHead>
+									</TableRow>
+								</TableHeader>
+							</Table>
 							<div
 								className="max-h-[calc(100vh-320px)] min-h-[400px] overflow-auto"
 								ref={parentRef}
@@ -1109,14 +1156,14 @@ function BrowsePage() {
 										const item = objects[virtualItem.index];
 										return (
 											<div
-												className="table-row"
+												className="absolute right-0 left-0 flex items-center border-border border-b transition-colors hover:bg-[rgba(255,255,255,0.025)]"
 												key={item.key}
 												style={{
 													height: `${virtualItem.size}px`,
 													transform: `translateY(${virtualItem.start}px)`,
 												}}
 											>
-												<div className="flex items-center gap-3 pr-3">
+												<div className="w-8 shrink-0 px-3">
 													<input
 														checked={selectedKeys.includes(item.key)}
 														onChange={(event) =>
@@ -1130,8 +1177,10 @@ function BrowsePage() {
 														}
 														type="checkbox"
 													/>
+												</div>
+												<div className="min-w-0 flex-1 px-2">
 													<button
-														className="table-name"
+														className="inline-flex items-center gap-2 border-none bg-transparent p-0 text-left text-(--text) text-sm"
 														onClick={() => {
 															if (item.kind === "folder") {
 																void navigate({
@@ -1153,18 +1202,18 @@ function BrowsePage() {
 																? "DIR"
 																: objectIcon(item.key)}
 														</span>
-														<span>{item.name}</span>
+														<span className="truncate">{item.name}</span>
 													</button>
 												</div>
-												<div className="table-meta">
+												<div className="w-24 shrink-0 px-2 text-(--text-soft) text-sm">
 													{item.kind === "folder"
 														? "Folder"
 														: formatBytes(item.size)}
 												</div>
-												<div className="table-meta-muted">
+												<div className="w-36 shrink-0 px-2 text-muted text-sm">
 													{formatTimestamp(item.lastModified)}
 												</div>
-												<div className="table-actions">
+												<div className="flex w-28 shrink-0 items-center justify-end gap-1 px-2">
 													{item.kind === "folder" ? (
 														<Button
 															onClick={() =>
@@ -1176,60 +1225,157 @@ function BrowsePage() {
 																})
 															}
 															size="xs"
+															title="Open folder"
 															type="button"
-															variant="ghost"
+															variant="outline"
+															className="gap-1 text-xs!"
 														>
-															Open
+															<HugeiconsIcon
+																icon={FolderOpenIcon}
+																strokeWidth={2}
+															/>
+															<span className="text-xs!">Open</span>
 														</Button>
 													) : (
-														<>
-															{item.isPreviewable ? (
-																<Button
-																	onClick={() => previewMutation.mutate(item)}
-																	size="xs"
-																	type="button"
-																	variant="ghost"
-																>
-																	View
-																</Button>
-															) : null}
-															<Button
-																onClick={() => downloadMutation.mutate(item)}
-																size="xs"
-																type="button"
-																variant="ghost"
-															>
-																Download
-															</Button>
-															<Button
-																onClick={() => {
-																	setRenameTarget(item);
-																	setRenameValue(item.name);
-																}}
-																size="xs"
-																type="button"
-																variant="ghost"
-															>
-																Rename
-															</Button>
-															<Button
-																onClick={() => openReplacePicker(item)}
-																size="xs"
-																type="button"
-																variant="ghost"
-															>
-																Replace
-															</Button>
-														</>
+														<Button
+															onClick={() => downloadMutation.mutate(item)}
+															size="xs"
+															title="Download"
+															type="button"
+															variant="default"
+															className="gap-1 text-xs!"
+														>
+															<HugeiconsIcon
+																icon={CloudDownloadIcon}
+																strokeWidth={2}
+															/>
+															<span className="text-xs!">Download</span>
+														</Button>
 													)}
-													<Button
-														onClick={() => deleteMutation.mutate([item.key])}
-														size="xs"
-														type="button"
-														variant="destructive"
-													>
-														Delete
-													</Button>
+													<DropdownMenu>
+														<DropdownMenuTrigger
+															render={
+																<Button
+																	size="icon-xs"
+																	title="More actions"
+																	variant="ghost"
+																/>
+															}
+														>
+															<HugeiconsIcon
+																icon={MoreVerticalIcon}
+																strokeWidth={2}
+															/>
+														</DropdownMenuTrigger>
+														<DropdownMenuContent align="end" side="bottom">
+															{item.kind === "file" && item.isPreviewable && (
+																<DropdownMenuItem
+																	onClick={() => previewMutation.mutate(item)}
+																>
+																	<HugeiconsIcon
+																		icon={EyeIcon}
+																		strokeWidth={2}
+																	/>
+																	Preview
+																</DropdownMenuItem>
+															)}
+															{item.kind === "file" && (
+																<DropdownMenuItem
+																	onClick={() => downloadMutation.mutate(item)}
+																>
+																	<HugeiconsIcon
+																		icon={CloudDownloadIcon}
+																		strokeWidth={2}
+																	/>
+																	Download
+																</DropdownMenuItem>
+															)}
+															{item.kind === "file" && (
+																<DropdownMenuItem
+																	onClick={() => {
+																		setRenameTarget(item);
+																		setRenameValue(item.name);
+																	}}
+																>
+																	<HugeiconsIcon
+																		icon={PencilIcon}
+																		strokeWidth={2}
+																	/>
+																	Rename
+																</DropdownMenuItem>
+															)}
+															{item.kind === "file" && (
+																<DropdownMenuItem
+																	onClick={() => openReplacePicker(item)}
+																>
+																	<HugeiconsIcon
+																		icon={FileEditIcon}
+																		strokeWidth={2}
+																	/>
+																	Replace
+																</DropdownMenuItem>
+															)}
+															{item.kind === "file" && (
+																<DropdownMenuItem
+																	onClick={async () => {
+																		if (!provider || !bucket) return;
+																		const url = buildObjectUrl(
+																			provider,
+																			bucket,
+																			item.key,
+																		);
+																		if (!url) {
+																			setStatusMessage(
+																				"Direct URL unavailable for this provider.",
+																			);
+																			return;
+																		}
+																		await navigator.clipboard.writeText(url);
+																		setStatusMessage(
+																			`Copied URL for ${item.name}.`,
+																		);
+																	}}
+																>
+																	<HugeiconsIcon
+																		icon={CopyLinkIcon}
+																		strokeWidth={2}
+																	/>
+																	Copy URL
+																</DropdownMenuItem>
+															)}
+															{item.kind === "folder" && (
+																<DropdownMenuItem
+																	onClick={() =>
+																		void navigate({
+																			search: (current) => ({
+																				...current,
+																				prefix: item.key,
+																			}),
+																		})
+																	}
+																>
+																	<HugeiconsIcon
+																		icon={FolderOpenIcon}
+																		strokeWidth={2}
+																	/>
+																	Open
+																</DropdownMenuItem>
+															)}
+															<DropdownMenuSeparator />
+															<DropdownMenuItem
+																onClick={() =>
+																	deleteMutation.mutate([item.key])
+																}
+																variant="destructive"
+															>
+																<HugeiconsIcon
+																	icon={DeleteThrowIcon}
+																	strokeWidth={2}
+																/>
+																Delete
+															</DropdownMenuItem>
+														</DropdownMenuContent>
+													</DropdownMenu>
 												</div>
 											</div>
 										);
@@ -1365,7 +1511,12 @@ function BrowsePage() {
 							>
 								Cancel
 							</Button>
-							<Button disabled={!renameValue.trim()} size="xs" type="submit" variant="default">
+							<Button
+								disabled={!renameValue.trim()}
+								size="xs"
+								type="submit"
+								variant="default"
+							>
 								Rename
 							</Button>
 						</DialogFooter>
@@ -1388,11 +1539,7 @@ function BrowsePage() {
 								return;
 							}
 							const name = folderName.trim();
-							void createFolder(
-								provider,
-								bucket,
-								`${search.prefix}${name}/`,
-							)
+							void createFolder(provider, bucket, `${search.prefix}${name}/`)
 								.then(async () => {
 									setStatusMessage(`Created folder ${name}.`);
 									await queryClient.invalidateQueries({
@@ -1428,7 +1575,12 @@ function BrowsePage() {
 							>
 								Cancel
 							</Button>
-							<Button disabled={!folderName.trim()} size="xs" type="submit" variant="default">
+							<Button
+								disabled={!folderName.trim()}
+								size="xs"
+								type="submit"
+								variant="default"
+							>
 								Create
 							</Button>
 						</DialogFooter>
@@ -1441,8 +1593,10 @@ function BrowsePage() {
 					<DialogHeader>
 						<DialogTitle>Delete items</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete {selectedKeys.length} selected item
-							{selectedKeys.length > 1 ? "s" : ""}? This action cannot be undone.
+							Are you sure you want to delete {selectedKeys.length} selected
+							item
+							{selectedKeys.length > 1 ? "s" : ""}? This action cannot be
+							undone.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1522,7 +1676,7 @@ function ObjectCard(props: {
 						: `${formatBytes(item.size)} • ${formatTimestamp(item.lastModified)}`}
 				</div>
 			</div>
-			<div className="mt-3 flex flex-wrap gap-1">
+			<div className="mt-3 flex items-center gap-1">
 				{item.kind === "folder" ? (
 					<Button
 						onClick={props.onOpenFolder}
@@ -1530,62 +1684,72 @@ function ObjectCard(props: {
 						type="button"
 						variant="outline"
 					>
+						<HugeiconsIcon icon={FolderOpenIcon} strokeWidth={2} />
 						Open
 					</Button>
 				) : (
-					<>
-						{item.isPreviewable ? (
-							<Button
-								onClick={props.onPreview}
-								size="xs"
-								type="button"
-								variant="ghost"
-							>
-								View
-							</Button>
-						) : null}
-						<Button
-							onClick={props.onDownload}
-							size="xs"
-							type="button"
-							variant="ghost"
-						>
-							Download
-						</Button>
-						<Button
-							onClick={props.onRename}
-							size="xs"
-							type="button"
-							variant="ghost"
-						>
-							Rename
-						</Button>
-						<Button
-							onClick={props.onReplace}
-							size="xs"
-							type="button"
-							variant="ghost"
-						>
-							Replace
-						</Button>
-						<Button
-							onClick={props.onShare}
-							size="xs"
-							type="button"
-							variant="ghost"
-						>
-							Copy URL
-						</Button>
-					</>
+					<Button
+						onClick={props.onDownload}
+						size="xs"
+						type="button"
+						variant="ghost"
+					>
+						<HugeiconsIcon icon={CloudDownloadIcon} strokeWidth={2} />
+						Download
+					</Button>
 				)}
-				<Button
-					onClick={props.onDelete}
-					size="xs"
-					type="button"
-					variant="destructive"
-				>
-					Delete
-				</Button>
+				<DropdownMenu>
+					<DropdownMenuTrigger
+						render={
+							<Button size="icon-xs" title="More actions" variant="ghost" />
+						}
+					>
+						<HugeiconsIcon icon={MoreVerticalIcon} strokeWidth={2} />
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" side="bottom">
+						{item.kind === "file" && item.isPreviewable && (
+							<DropdownMenuItem onClick={props.onPreview}>
+								<HugeiconsIcon icon={EyeIcon} strokeWidth={2} />
+								Preview
+							</DropdownMenuItem>
+						)}
+						{item.kind === "file" && (
+							<DropdownMenuItem onClick={props.onDownload}>
+								<HugeiconsIcon icon={CloudDownloadIcon} strokeWidth={2} />
+								Download
+							</DropdownMenuItem>
+						)}
+						{item.kind === "file" && (
+							<DropdownMenuItem onClick={props.onRename}>
+								<HugeiconsIcon icon={PencilIcon} strokeWidth={2} />
+								Rename
+							</DropdownMenuItem>
+						)}
+						{item.kind === "file" && (
+							<DropdownMenuItem onClick={props.onReplace}>
+								<HugeiconsIcon icon={FileEditIcon} strokeWidth={2} />
+								Replace
+							</DropdownMenuItem>
+						)}
+						{item.kind === "file" && (
+							<DropdownMenuItem onClick={props.onShare}>
+								<HugeiconsIcon icon={CopyLinkIcon} strokeWidth={2} />
+								Copy URL
+							</DropdownMenuItem>
+						)}
+						{item.kind === "folder" && (
+							<DropdownMenuItem onClick={props.onOpenFolder}>
+								<HugeiconsIcon icon={FolderOpenIcon} strokeWidth={2} />
+								Open
+							</DropdownMenuItem>
+						)}
+						<DropdownMenuSeparator />
+						<DropdownMenuItem onClick={props.onDelete} variant="destructive">
+							<HugeiconsIcon icon={DeleteThrowIcon} strokeWidth={2} />
+							Delete
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
 			</div>
 		</div>
 	);
