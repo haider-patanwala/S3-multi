@@ -1,23 +1,19 @@
 # S3 Multi
 
-Client-only React app for managing multiple S3-compatible providers from the browser. The product direction comes from [PRD.md](./PRD.md): AWS S3, Cloudflare R2, and custom S3 endpoints, with credentials stored locally instead of sent through a backend.
+An app for managing multiple S3-compatible providers from the browser. AWS S3, Cloudflare R2, and custom S3 endpoints, with credentials stored locally instead of sent through a backend.
 
-The previous `README.md` was still the default TanStack example. This repo is now an S3 browser and transfer workspace built with React, TypeScript, Vite, TanStack Router, TanStack Query, and the AWS SDK v3.
+This is S3 browser and transfer workspace built with React, TypeScript, Vite, TanStack Router, TanStack Query, and the AWS SDK v3.
 
 ## Current App Scope
 
 The current implementation already includes:
 
 - Local provider vault in IndexedDB
-- AES-GCM encryption for stored access keys and secrets
 - Provider switching across AWS S3, R2, and custom S3 endpoints
-- Bucket selection with manual entry fallback when account-level listing is blocked by CORS
 - Prefix-based object browsing with list and grid views
 - File upload, replace, rename, delete, download, and folder creation
 - Preview support for image, video, text, JSON, and similar text-like files
 - Persisted transfer history for uploads and downloads
-
-The PRD also describes broader MVP goals such as richer resumable transfer controls, pause/resume flows, and more advanced queue behavior. Those are useful roadmap references, but they are not all exposed in the current UI yet.
 
 ## Tech Stack
 
@@ -29,13 +25,13 @@ The PRD also describes broader MVP goals such as richer resumable transfer contr
 - TanStack Virtual
 - AWS SDK v3 (`@aws-sdk/client-s3`, `@aws-sdk/lib-storage`)
 - Tailwind CSS v4
-- Biome
 
 ## Routes
 
 - `/browse` object browser and main workspace
 - `/providers` provider creation, testing, activation, and deletion
 - `/transfers` persisted upload/download ledger
+- `/help` guide on how to use this app
 
 ## Getting Started
 
@@ -124,7 +120,6 @@ The database name in the current implementation is `s3-multi-control-room`.
 
 ## Documentation
 
-- Product requirements: [PRD.md](./PRD.md)
 - End-user instructions: [USER_GUIDE.md](./USER_GUIDE.md)
 
 ## Project Structure
