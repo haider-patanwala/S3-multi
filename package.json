@@ -1,31 +1,34 @@
 {
-  "name": "tanstack-router-react-example-basic-react-query-file-based",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "vite --port 3000",
-    "build": "vite build && tsc --noEmit",
-    "preview": "vite preview",
-    "start": "vite"
-  },
-  "dependencies": {
-    "@tailwindcss/vite": "^4.1.18",
-    "@tanstack/react-query": "^5.90.0",
-    "@tanstack/react-query-devtools": "^5.90.0",
-    "@tanstack/react-router": "^1.163.3",
-    "@tanstack/react-router-devtools": "^1.163.3",
-    "@tanstack/router-plugin": "^1.164.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "redaxios": "^0.5.1",
-    "tailwindcss": "^4.1.18",
-    "zod": "^3.24.2"
-  },
-  "devDependencies": {
-    "@types/react": "^19.0.8",
-    "@types/react-dom": "^19.0.3",
-    "@vitejs/plugin-react": "^4.3.4",
-    "typescript": "^5.7.2",
-    "vite": "^7.3.1"
-  }
+	"name": "s3-bucket-manager",
+	"private": true,
+	"scripts": {
+		"build": "vite build && tsc --noEmit",
+		"dev": "vite --port 3000",
+		"preview": "vite preview",
+		"start": "vite --port 3000",
+		"lint": "biome check --write .",
+		"lint:error": "biome check . --diagnostic-level=error"
+	},
+	"type": "module",
+	"dependencies": {
+		"@tailwindcss/vite": "^4.1.18",
+		"@tanstack/react-query": "^5.90.0",
+		"@tanstack/react-query-devtools": "^5.90.0",
+		"@tanstack/react-router": "^1.163.3",
+		"@tanstack/router-plugin": "^1.164.0",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"redaxios": "^0.5.1",
+		"tailwindcss": "^4.1.18",
+		"zod": "^3.24.2"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.5",
+		"@tanstack/react-router-devtools": "^1.163.3",
+		"@types/react": "^19.0.8",
+		"@types/react-dom": "^19.0.3",
+		"@vitejs/plugin-react": "^4.3.4",
+		"typescript": "^5.7.2",
+		"vite": "^7.3.1"
+	}
 }

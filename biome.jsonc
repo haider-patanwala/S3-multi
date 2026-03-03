@@ -1,0 +1,112 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"assist": {
+		"actions": {
+			"source": {
+				"noDuplicateClasses": "on",
+				"organizeImports": "on",
+				"useSortedInterfaceMembers": "on",
+				"useSortedProperties": "on"
+			}
+		}
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	},
+	"files": {
+		"ignoreUnknown": false,
+		"includes": [
+			"**",
+			"!**/node_modules",
+			"!**/.next",
+			"!**/out",
+			"!**/dist",
+			"!**/build",
+			"!**/next-env.d.ts",
+			"!**/routeTree.gen.ts"
+		]
+	},
+	"formatter": { "enabled": true },
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"a11y": {
+				"noLabelWithoutControl": "warn",
+				"noRedundantRoles": {
+					"fix": "safe",
+					"level": "error"
+				},
+				"noStaticElementInteractions": "warn",
+				"noSvgWithoutTitle": "warn",
+				"useButtonType": "off",
+				"useKeyWithClickEvents": "off",
+				"useSemanticElements": "warn",
+				"useValidAnchor": "off"
+			},
+			"complexity": {
+				"noBannedTypes": "off",
+				"noCommaOperator": "warn",
+				"noExtraBooleanCast": {
+					"fix": "safe",
+					"level": "warn"
+				},
+				"noForEach": "off",
+				"noUselessFragments": {
+					"fix": "safe",
+					"level": "off"
+				},
+				"useLiteralKeys": {
+					"fix": "safe",
+					"level": "warn"
+				},
+				"useOptionalChain": "off"
+			},
+			"correctness": {
+				"noEmptyPattern": {
+					"level": "warn"
+				},
+				"noUnusedImports": {
+					"fix": "safe",
+					"level": "warn"
+				},
+				"useExhaustiveDependencies": "warn"
+			},
+			"nursery": {
+				"noUnknownAttribute": "error",
+				"useSortedClasses": {
+					"fix": "safe",
+					"level": "warn",
+					"options": {
+						"functions": ["clsx", "cva", "cn"]
+					}
+				}
+			},
+			"recommended": true,
+			"style": {
+				"noNonNullAssertion": "off",
+				"noUnusedTemplateLiteral": "off",
+				"noUselessElse": "off",
+				"useSelfClosingElements": {
+					"fix": "safe",
+					"level": "warn"
+				},
+				"useTemplate": {
+					"fix": "safe",
+					"level": "warn"
+				}
+			},
+			"suspicious": {
+				"noArrayIndexKey": "off",
+				"noDoubleEquals": "warn",
+				"noExplicitAny": "off"
+			}
+		}
+	},
+	"vcs": {
+		"clientKind": "git",
+		"enabled": true,
+		"useIgnoreFile": true
+	}
+}

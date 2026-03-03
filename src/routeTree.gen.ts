@@ -9,28 +9,21 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as PathlessLayoutRouteImport } from './routes/_pathlessLayout'
-import { Route as HpLayoutRouteImport } from './routes/_hpLayout'
-import { Route as PostsRouteRouteImport } from './routes/posts.route'
+import { Route as PostsRouteRouteImport } from './routes/posts/route'
+import { Route as HpRouteRouteImport } from './routes/hp/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as PostsIndexRouteImport } from './routes/posts.index'
-import { Route as PostsPostIdRouteImport } from './routes/posts.$postId'
-import { Route as PathlessLayoutNestedLayoutRouteImport } from './routes/_pathlessLayout/_nested-layout'
-import { Route as HpLayoutHpRouteImport } from './routes/_hpLayout/hp'
-import { Route as PathlessLayoutNestedLayoutRouteBRouteImport } from './routes/_pathlessLayout/_nested-layout/route-b'
-import { Route as PathlessLayoutNestedLayoutRouteARouteImport } from './routes/_pathlessLayout/_nested-layout/route-a'
+import { Route as PostsIndexRouteImport } from './routes/posts/index'
+import { Route as HpIndexRouteImport } from './routes/hp/index'
+import { Route as PostsPostIdRouteImport } from './routes/posts/$postId'
 
-const PathlessLayoutRoute = PathlessLayoutRouteImport.update({
-  id: '/_pathlessLayout',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HpLayoutRoute = HpLayoutRouteImport.update({
-  id: '/_hpLayout',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const PostsRouteRoute = PostsRouteRouteImport.update({
   id: '/posts',
   path: '/posts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HpRouteRoute = HpRouteRouteImport.update({
+  id: '/hp',
+  path: '/hp',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -43,118 +36,75 @@ const PostsIndexRoute = PostsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => PostsRouteRoute,
 } as any)
+const HpIndexRoute = HpIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => HpRouteRoute,
+} as any)
 const PostsPostIdRoute = PostsPostIdRouteImport.update({
   id: '/$postId',
   path: '/$postId',
   getParentRoute: () => PostsRouteRoute,
 } as any)
-const PathlessLayoutNestedLayoutRoute =
-  PathlessLayoutNestedLayoutRouteImport.update({
-    id: '/_nested-layout',
-    getParentRoute: () => PathlessLayoutRoute,
-  } as any)
-const HpLayoutHpRoute = HpLayoutHpRouteImport.update({
-  id: '/hp',
-  path: '/hp',
-  getParentRoute: () => HpLayoutRoute,
-} as any)
-const PathlessLayoutNestedLayoutRouteBRoute =
-  PathlessLayoutNestedLayoutRouteBRouteImport.update({
-    id: '/route-b',
-    path: '/route-b',
-    getParentRoute: () => PathlessLayoutNestedLayoutRoute,
-  } as any)
-const PathlessLayoutNestedLayoutRouteARoute =
-  PathlessLayoutNestedLayoutRouteARouteImport.update({
-    id: '/route-a',
-    path: '/route-a',
-    getParentRoute: () => PathlessLayoutNestedLayoutRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/hp': typeof HpRouteRouteWithChildren
   '/posts': typeof PostsRouteRouteWithChildren
-  '/hp': typeof HpLayoutHpRoute
   '/posts/$postId': typeof PostsPostIdRoute
+  '/hp/': typeof HpIndexRoute
   '/posts/': typeof PostsIndexRoute
-  '/route-a': typeof PathlessLayoutNestedLayoutRouteARoute
-  '/route-b': typeof PathlessLayoutNestedLayoutRouteBRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/hp': typeof HpLayoutHpRoute
   '/posts/$postId': typeof PostsPostIdRoute
+  '/hp': typeof HpIndexRoute
   '/posts': typeof PostsIndexRoute
-  '/route-a': typeof PathlessLayoutNestedLayoutRouteARoute
-  '/route-b': typeof PathlessLayoutNestedLayoutRouteBRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/hp': typeof HpRouteRouteWithChildren
   '/posts': typeof PostsRouteRouteWithChildren
-  '/_hpLayout': typeof HpLayoutRouteWithChildren
-  '/_pathlessLayout': typeof PathlessLayoutRouteWithChildren
-  '/_hpLayout/hp': typeof HpLayoutHpRoute
-  '/_pathlessLayout/_nested-layout': typeof PathlessLayoutNestedLayoutRouteWithChildren
   '/posts/$postId': typeof PostsPostIdRoute
+  '/hp/': typeof HpIndexRoute
   '/posts/': typeof PostsIndexRoute
-  '/_pathlessLayout/_nested-layout/route-a': typeof PathlessLayoutNestedLayoutRouteARoute
-  '/_pathlessLayout/_nested-layout/route-b': typeof PathlessLayoutNestedLayoutRouteBRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/posts'
-    | '/hp'
-    | '/posts/$postId'
-    | '/posts/'
-    | '/route-a'
-    | '/route-b'
+  fullPaths: '/' | '/hp' | '/posts' | '/posts/$postId' | '/hp/' | '/posts/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/hp' | '/posts/$postId' | '/posts' | '/route-a' | '/route-b'
+  to: '/' | '/posts/$postId' | '/hp' | '/posts'
   id:
     | '__root__'
     | '/'
+    | '/hp'
     | '/posts'
-    | '/_hpLayout'
-    | '/_pathlessLayout'
-    | '/_hpLayout/hp'
-    | '/_pathlessLayout/_nested-layout'
     | '/posts/$postId'
+    | '/hp/'
     | '/posts/'
-    | '/_pathlessLayout/_nested-layout/route-a'
-    | '/_pathlessLayout/_nested-layout/route-b'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HpRouteRoute: typeof HpRouteRouteWithChildren
   PostsRouteRoute: typeof PostsRouteRouteWithChildren
-  HpLayoutRoute: typeof HpLayoutRouteWithChildren
-  PathlessLayoutRoute: typeof PathlessLayoutRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/_pathlessLayout': {
-      id: '/_pathlessLayout'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof PathlessLayoutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_hpLayout': {
-      id: '/_hpLayout'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof HpLayoutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/posts': {
       id: '/posts'
       path: '/posts'
       fullPath: '/posts'
       preLoaderRoute: typeof PostsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hp': {
+      id: '/hp'
+      path: '/hp'
+      fullPath: '/hp'
+      preLoaderRoute: typeof HpRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -171,6 +121,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PostsIndexRouteImport
       parentRoute: typeof PostsRouteRoute
     }
+    '/hp/': {
+      id: '/hp/'
+      path: '/'
+      fullPath: '/hp/'
+      preLoaderRoute: typeof HpIndexRouteImport
+      parentRoute: typeof HpRouteRoute
+    }
     '/posts/$postId': {
       id: '/posts/$postId'
       path: '/$postId'
@@ -178,36 +135,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PostsPostIdRouteImport
       parentRoute: typeof PostsRouteRoute
     }
-    '/_pathlessLayout/_nested-layout': {
-      id: '/_pathlessLayout/_nested-layout'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof PathlessLayoutNestedLayoutRouteImport
-      parentRoute: typeof PathlessLayoutRoute
-    }
-    '/_hpLayout/hp': {
-      id: '/_hpLayout/hp'
-      path: '/hp'
-      fullPath: '/hp'
-      preLoaderRoute: typeof HpLayoutHpRouteImport
-      parentRoute: typeof HpLayoutRoute
-    }
-    '/_pathlessLayout/_nested-layout/route-b': {
-      id: '/_pathlessLayout/_nested-layout/route-b'
-      path: '/route-b'
-      fullPath: '/route-b'
-      preLoaderRoute: typeof PathlessLayoutNestedLayoutRouteBRouteImport
-      parentRoute: typeof PathlessLayoutNestedLayoutRoute
-    }
-    '/_pathlessLayout/_nested-layout/route-a': {
-      id: '/_pathlessLayout/_nested-layout/route-a'
-      path: '/route-a'
-      fullPath: '/route-a'
-      preLoaderRoute: typeof PathlessLayoutNestedLayoutRouteARouteImport
-      parentRoute: typeof PathlessLayoutNestedLayoutRoute
-    }
   }
 }
+
+interface HpRouteRouteChildren {
+  HpIndexRoute: typeof HpIndexRoute
+}
+
+const HpRouteRouteChildren: HpRouteRouteChildren = {
+  HpIndexRoute: HpIndexRoute,
+}
+
+const HpRouteRouteWithChildren =
+  HpRouteRoute._addFileChildren(HpRouteRouteChildren)
 
 interface PostsRouteRouteChildren {
   PostsPostIdRoute: typeof PostsPostIdRoute
@@ -223,53 +163,10 @@ const PostsRouteRouteWithChildren = PostsRouteRoute._addFileChildren(
   PostsRouteRouteChildren,
 )
 
-interface HpLayoutRouteChildren {
-  HpLayoutHpRoute: typeof HpLayoutHpRoute
-}
-
-const HpLayoutRouteChildren: HpLayoutRouteChildren = {
-  HpLayoutHpRoute: HpLayoutHpRoute,
-}
-
-const HpLayoutRouteWithChildren = HpLayoutRoute._addFileChildren(
-  HpLayoutRouteChildren,
-)
-
-interface PathlessLayoutNestedLayoutRouteChildren {
-  PathlessLayoutNestedLayoutRouteARoute: typeof PathlessLayoutNestedLayoutRouteARoute
-  PathlessLayoutNestedLayoutRouteBRoute: typeof PathlessLayoutNestedLayoutRouteBRoute
-}
-
-const PathlessLayoutNestedLayoutRouteChildren: PathlessLayoutNestedLayoutRouteChildren =
-  {
-    PathlessLayoutNestedLayoutRouteARoute:
-      PathlessLayoutNestedLayoutRouteARoute,
-    PathlessLayoutNestedLayoutRouteBRoute:
-      PathlessLayoutNestedLayoutRouteBRoute,
-  }
-
-const PathlessLayoutNestedLayoutRouteWithChildren =
-  PathlessLayoutNestedLayoutRoute._addFileChildren(
-    PathlessLayoutNestedLayoutRouteChildren,
-  )
-
-interface PathlessLayoutRouteChildren {
-  PathlessLayoutNestedLayoutRoute: typeof PathlessLayoutNestedLayoutRouteWithChildren
-}
-
-const PathlessLayoutRouteChildren: PathlessLayoutRouteChildren = {
-  PathlessLayoutNestedLayoutRoute: PathlessLayoutNestedLayoutRouteWithChildren,
-}
-
-const PathlessLayoutRouteWithChildren = PathlessLayoutRoute._addFileChildren(
-  PathlessLayoutRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HpRouteRoute: HpRouteRouteWithChildren,
   PostsRouteRoute: PostsRouteRouteWithChildren,
-  HpLayoutRoute: HpLayoutRouteWithChildren,
-  PathlessLayoutRoute: PathlessLayoutRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
