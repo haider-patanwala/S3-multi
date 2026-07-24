@@ -29,6 +29,11 @@ async function toConfig(record: ProviderRecord): Promise<ProviderConfig> {
 		buckets: record.buckets,
 		defaultBucket: record.defaultBucket,
 		forcePathStyle: record.forcePathStyle,
+		cloudFrontDistributionId: record.cloudFrontDistributionId,
+		cloudflareZoneId: record.cloudflareZoneId,
+		cloudflareApiToken: record.cloudflareApiTokenEncrypted
+			? await decryptSecret(record.cloudflareApiTokenEncrypted)
+			: undefined,
 		createdAt: record.createdAt,
 		lastUsedAt: record.lastUsedAt,
 	};
@@ -56,10 +61,16 @@ export async function saveProvider(draft: ProviderDraft) {
 		buckets: draft.buckets?.length ? draft.buckets : undefined,
 		defaultBucket: draft.defaultBucket?.trim() || undefined,
 		forcePathStyle: draft.forcePathStyle ?? false,
+		cloudFrontDistributionId:
+			draft.cloudFrontDistributionId?.trim() || undefined,
+		cloudflareZoneId: draft.cloudflareZoneId?.trim() || undefined,
 		createdAt,
 		lastUsedAt: Date.now(),
 		accessKeyIdEncrypted: await encryptSecret(draft.accessKeyId.trim()),
 		secretAccessKeyEncrypted: await encryptSecret(draft.secretAccessKey.trim()),
+		cloudflareApiTokenEncrypted: draft.cloudflareApiToken?.trim()
+			? await encryptSecret(draft.cloudflareApiToken.trim())
+			: undefined,
 	};
 
 	await idbPut(STORE_PROVIDERS, record);

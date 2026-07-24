@@ -351,6 +351,24 @@ export async function previewObject(
 	};
 }
 
+export async function putObjectText(
+	provider: ProviderConfig,
+	bucket: string,
+	key: string,
+	text: string,
+	contentType?: string,
+) {
+	const client = createClient(provider);
+	await client.send(
+		new PutObjectCommand({
+			Bucket: bucket,
+			Key: key,
+			Body: text,
+			ContentType: contentType || resolveObjectContentType(key),
+		}),
+	);
+}
+
 export async function downloadObject(
 	provider: ProviderConfig,
 	bucket: string,

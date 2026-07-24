@@ -11,6 +11,9 @@ export type ProviderConfig = {
 	buckets?: string[];
 	defaultBucket?: string;
 	forcePathStyle?: boolean;
+	cloudFrontDistributionId?: string;
+	cloudflareZoneId?: string;
+	cloudflareApiToken?: string;
 	createdAt: number;
 	lastUsedAt?: number;
 };
@@ -21,10 +24,11 @@ export type ProviderDraft = Omit<ProviderConfig, "createdAt"> & {
 
 export type ProviderRecord = Omit<
 	ProviderConfig,
-	"accessKeyId" | "secretAccessKey"
+	"accessKeyId" | "secretAccessKey" | "cloudflareApiToken"
 > & {
 	accessKeyIdEncrypted: string;
 	secretAccessKeyEncrypted: string;
+	cloudflareApiTokenEncrypted?: string;
 };
 
 export type BrowserLocation = {

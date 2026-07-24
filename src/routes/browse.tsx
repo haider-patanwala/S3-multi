@@ -40,6 +40,7 @@ import {
 	DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
 import {
 	Select,
 	SelectContent,
@@ -53,8 +54,10 @@ import {
 	TableHeader,
 	TableRow,
 } from "../components/ui/table";
+import { purgeCache } from "../lib/cdn";
 import {
 	getActiveProviderId,
+	saveProvider,
 	setActiveProviderId,
 	setRecentBucket,
 } from "../lib/providers";
@@ -71,6 +74,7 @@ import {
 	deleteKeys,
 	downloadObject,
 	previewObject,
+	putObjectText,
 	renameKey,
 	resolveObjectContentType,
 	uploadObject,
@@ -87,6 +91,7 @@ import {
 	extensionForKey,
 	formatBytes,
 	formatTimestamp,
+	isEditableTextContentType,
 	objectIcon,
 } from "../lib/utils";
 
@@ -145,14 +150,7 @@ function previewRenderer(
 			</video>
 		);
 	}
-	if (
-		preview.contentType.startsWith("text/") ||
-		preview.contentType.includes("yaml") ||
-		preview.contentType.includes("yml") ||
-		preview.contentType.includes("markdown") ||
-		preview.contentType.includes("xml") ||
-		preview.contentType.includes("json")
-	) {
+	if (isEditableTextContentType(preview.contentType)) {
 		return <pre className="preview-code">{textPreview}</pre>;
 	}
 	return (
@@ -215,7 +213,13 @@ function BrowsePage() {
 	const objects = objectListQuery.data ?? [];
 	const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
 	const [preview, setPreview] = useState<ObjectPreview | null>(null);
+	const [previewKey, setPreviewKey] = useState<string | null>(null);
 	const [textPreview, setTextPreview] = useState<string | null>(null);
+	const [editText, setEditText] = useState("");
+	const [purgeOpen, setPurgeOpen] = useState(false);
+	const [cfDistId, setCfDistId] = useState("");
+	const [cfZoneId, setCfZoneId] = useState("");
+	const [cfToken, setCfToken] = useState("");
 	const [_statusMessage, setStatusMessage] = useState(
 		"Select a provider and bucket to start browsing objects.",
 	);
@@ -392,26 +396,76 @@ function BrowsePage() {
 			}
 			const nextPreview = await previewObject(provider, bucket, item.key);
 			let nextText: string | null = null;
-			if (
-				nextPreview.contentType.startsWith("text/") ||
-				nextPreview.contentType.includes("json")
-			) {
+			if (isEditableTextContentType(nextPreview.contentType)) {
 				nextText = await fetch(nextPreview.blobUrl).then((response) =>
 					response.text(),
 				);
 			}
 			return { nextPreview, nextText };
 		},
-		onSuccess: ({ nextPreview, nextText }) => {
+		onSuccess: ({ nextPreview, nextText }, item) => {
 			if (preview) {
 				URL.revokeObjectURL(preview.blobUrl);
 			}
 			setPreview(nextPreview);
+			setPreviewKey(item.key);
 			setTextPreview(nextText);
+			setEditText(nextText ?? "");
 		},
 		onError: (error) => {
 			setStatusMessage(
 				error instanceof Error ? error.message : "Preview failed.",
+			);
+		},
+	});
+
+	const saveTextMutation = useMutation({
+		mutationFn: async () => {
+			if (!(provider && bucket && preview && previewKey)) {
+				throw new Error("Nothing to save.");
+			}
+			await putObjectText(
+				provider,
+				bucket,
+				previewKey,
+				editText,
+				preview.contentType,
+			);
+		},
+		onSuccess: async () => {
+			setTextPreview(editText);
+			setStatusMessage("Saved changes to the file.");
+			await queryClient.invalidateQueries({
+				queryKey: ["objects", provider?.id, bucket],
+			});
+		},
+		onError: (error) => {
+			setStatusMessage(error instanceof Error ? error.message : "Save failed.");
+		},
+	});
+
+	const purgeMutation = useMutation({
+		mutationFn: async () => {
+			if (!provider) {
+				throw new Error("Choose a provider first.");
+			}
+			const updated = {
+				...provider,
+				cloudFrontDistributionId: cfDistId.trim() || undefined,
+				cloudflareZoneId: cfZoneId.trim() || undefined,
+				cloudflareApiToken: cfToken.trim() || undefined,
+			};
+			await saveProvider({ ...updated, createdAt: provider.createdAt });
+			return purgeCache(updated);
+		},
+		onSuccess: async (message) => {
+			setStatusMessage(message);
+			setPurgeOpen(false);
+			await queryClient.invalidateQueries({ queryKey: ["providers"] });
+		},
+		onError: (error) => {
+			setStatusMessage(
+				error instanceof Error ? error.message : "Cache purge failed.",
 			);
 		},
 	});
@@ -1445,23 +1499,175 @@ function BrowsePage() {
 								<div className="section-label">Preview</div>
 								<div className="preview-title mt-2">{preview.fileName}</div>
 							</div>
-							<Button
-								onClick={() => {
-									URL.revokeObjectURL(preview.blobUrl);
-									setPreview(null);
-									setTextPreview(null);
-								}}
-								size="sm"
-								type="button"
-								variant="outline"
-							>
-								Close
-							</Button>
+							<div className="flex items-center gap-2">
+								{provider &&
+								(provider.type === "aws" || provider.type === "r2") ? (
+									<Button
+										onClick={() => {
+											setCfDistId(provider.cloudFrontDistributionId ?? "");
+											setCfZoneId(provider.cloudflareZoneId ?? "");
+											setCfToken(provider.cloudflareApiToken ?? "");
+											setPurgeOpen(true);
+										}}
+										size="sm"
+										type="button"
+										variant="outline"
+									>
+										Purge cache
+									</Button>
+								) : null}
+								<Button
+									onClick={() => {
+										URL.revokeObjectURL(preview.blobUrl);
+										setPreview(null);
+										setPreviewKey(null);
+										setTextPreview(null);
+										setEditText("");
+									}}
+									size="sm"
+									type="button"
+									variant="outline"
+								>
+									Close
+								</Button>
+							</div>
 						</div>
-						{previewRenderer(preview, textPreview)}
+						{textPreview !== null &&
+						isEditableTextContentType(preview.contentType) ? (
+							<div className="flex flex-col gap-3">
+								<Textarea
+									className="h-[62vh] w-[80vw] max-w-full resize-none font-mono text-sm"
+									onChange={(event) => setEditText(event.target.value)}
+									spellCheck={false}
+									value={editText}
+								/>
+								<div className="flex items-center justify-end gap-2">
+									<Button
+										disabled={editText === textPreview}
+										onClick={() => setEditText(textPreview)}
+										size="sm"
+										type="button"
+										variant="outline"
+									>
+										Reset
+									</Button>
+									<Button
+										disabled={
+											editText === textPreview || saveTextMutation.isPending
+										}
+										onClick={() => saveTextMutation.mutate()}
+										size="sm"
+										type="button"
+										variant="default"
+									>
+										{saveTextMutation.isPending ? "Saving…" : "Save changes"}
+									</Button>
+								</div>
+							</div>
+						) : (
+							previewRenderer(preview, textPreview)
+						)}
 					</div>
 				</div>
 			) : null}
+
+			<Dialog open={purgeOpen} onOpenChange={setPurgeOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Purge CDN cache</DialogTitle>
+						<DialogDescription>
+							Invalidates the entire distribution/zone so viewers get the latest
+							objects. Keys are stored encrypted with this provider.
+						</DialogDescription>
+					</DialogHeader>
+					<form
+						onSubmit={(event) => {
+							event.preventDefault();
+							purgeMutation.mutate();
+						}}
+					>
+						{provider?.type === "aws" ? (
+							<div className="flex flex-col gap-2">
+								<label className="section-label" htmlFor="cf-dist">
+									CloudFront Distribution ID
+								</label>
+								<Input
+									autoFocus
+									id="cf-dist"
+									onChange={(event) => setCfDistId(event.target.value)}
+									placeholder="E1A2B3C4D5E6F7"
+									value={cfDistId}
+								/>
+								<p className="text-muted-foreground text-xs">
+									AWS Console → CloudFront → Distributions → copy the ID of the
+									distribution serving this bucket. Uses this provider's existing
+									access key (needs the <code>cloudfront:CreateInvalidation</code>{" "}
+									IAM permission).
+								</p>
+							</div>
+						) : provider?.type === "r2" ? (
+							<div className="flex flex-col gap-2">
+								<label className="section-label" htmlFor="cf-zone">
+									Cloudflare Zone ID
+								</label>
+								<Input
+									autoFocus
+									id="cf-zone"
+									onChange={(event) => setCfZoneId(event.target.value)}
+									placeholder="0123456789abcdef0123456789abcdef"
+									value={cfZoneId}
+								/>
+								<label className="section-label mt-2" htmlFor="cf-token">
+									Cloudflare API Token
+								</label>
+								<Input
+									id="cf-token"
+									onChange={(event) => setCfToken(event.target.value)}
+									placeholder="API token with Cache Purge permission"
+									type="password"
+									value={cfToken}
+								/>
+								<p className="text-muted-foreground text-xs">
+									Zone ID: Cloudflare dashboard → select your domain → Overview →
+									API panel (right side). Token: My Profile → API Tokens → Create
+									Token → give it <code>Zone · Cache Purge</code> permission for
+									this zone. Note: Cloudflare's API blocks direct browser calls
+									(CORS) — if the purge fails, route it through a proxy.
+								</p>
+							</div>
+						) : (
+							<p className="text-muted-foreground text-sm">
+								Cache purge is only available for AWS (CloudFront) and Cloudflare
+								R2 providers.
+							</p>
+						)}
+						<DialogFooter className="mt-4">
+							<Button
+								onClick={() => setPurgeOpen(false)}
+								size="xs"
+								type="button"
+								variant="outline"
+							>
+								Cancel
+							</Button>
+							<Button
+								disabled={
+									purgeMutation.isPending ||
+									(provider?.type === "aws" && !cfDistId.trim()) ||
+									(provider?.type === "r2" &&
+										!(cfZoneId.trim() && cfToken.trim())) ||
+									(provider?.type !== "aws" && provider?.type !== "r2")
+								}
+								size="xs"
+								type="submit"
+								variant="default"
+							>
+								{purgeMutation.isPending ? "Purging…" : "Save & purge"}
+							</Button>
+						</DialogFooter>
+					</form>
+				</DialogContent>
+			</Dialog>
 
 			<Dialog
 				open={!!renameTarget}
