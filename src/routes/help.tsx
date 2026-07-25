@@ -61,15 +61,11 @@ function Note({ children }: { children: React.ReactNode }) {
 function HelpPage() {
 	return (
 		<div style={{ display: "grid", gap: "1rem" }}>
-			<div className="page-header">
-				<div className="section-label">Documentation</div>
-				<h2 className="page-title">Getting started</h2>
-				<p className="page-copy">
-					S3 Multi is a browser-based dashboard for managing objects across
-					multiple S3-compatible storage providers. All API calls go directly
-					from your browser — no backend server is involved.
-				</p>
-			</div>
+			<p className="page-copy max-w-3xl">
+				S3 Multi manages objects across multiple S3-compatible providers. Every
+				API call goes straight from your browser to the provider — there is no
+				backend.
+			</p>
 
 			{/* Quick start */}
 			<Section label="Overview" title="Quick start">
@@ -288,6 +284,113 @@ function HelpPage() {
 					MinIO Console also has a CORS settings page under Settings →
 					Configuration.
 				</p>
+			</Section>
+
+			{/* CDN cache purging */}
+			<Section label="Configuration" title="Purging the CDN cache">
+				<p className="page-copy" style={{ marginTop: "0.65rem" }}>
+					Editing a file updates the bucket immediately, but a CDN in front of
+					that bucket can keep serving the old copy to your visitors until it is
+					purged. How you purge depends on the provider — and the difference is
+					not this app's choice.
+				</p>
+
+				<h4 className="page-subtitle" style={{ marginTop: "1.1rem" }}>
+					AWS S3 + CloudFront — purges from the app
+				</h4>
+				<p className="page-copy" style={{ marginTop: "0.4rem" }}>
+					The CloudFront API allows browser calls (it returns{" "}
+					<code>Access-Control-Allow-Origin: *</code>), so this works in-app
+					with no extra setup. Open a file preview →{" "}
+					<strong>Purge cache</strong>, paste your Distribution ID, then{" "}
+					<strong>Save &amp; purge now</strong>. Saving an edited file also
+					purges that file automatically.
+				</p>
+				<p className="page-copy" style={{ marginTop: "0.4rem" }}>
+					The access key for this provider needs the{" "}
+					<code>cloudfront:CreateInvalidation</code> IAM permission:
+				</p>
+				<Code>{`{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "cloudfront:CreateInvalidation",
+    "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
+  }]
+}`}</Code>
+				<p className="page-copy" style={{ marginTop: "0.4rem" }}>
+					The dialog also shows the equivalent AWS CLI command if you would
+					rather not grant that permission to a browser-held key:
+				</p>
+				<Code>{`aws cloudfront create-invalidation \\
+  --distribution-id 'E1A2B3C4D5E6F7' \\
+  --paths '/docs/readme.md'`}</Code>
+				<Note>
+					The first 1,000 invalidation paths per month are free; after that AWS
+					charges per path. <code>/*</code> counts as a single path, so a
+					wildcard purge is cheaper but blunter. Invalidations are asynchronous
+					— acceptance is not completion, and propagation takes a few minutes.
+				</Note>
+
+				<h4 className="page-subtitle" style={{ marginTop: "1.4rem" }}>
+					Cloudflare R2 — copy a command, run it yourself
+				</h4>
+				<p className="page-copy" style={{ marginTop: "0.4rem" }}>
+					Cloudflare's API cannot be called from a browser. It sends no CORS
+					headers on any endpoint and answers preflight requests with{" "}
+					<code>405</code>, and because the purge request carries an{" "}
+					<code>Authorization</code> header a preflight is mandatory. No setting
+					in the Cloudflare dashboard changes this —{" "}
+					<code>api.cloudflare.com</code> is on a zone Cloudflare owns, so
+					Transform Rules and Workers in your account cannot touch it. It is a
+					deliberate stance: a browser-callable credential API would let any XSS
+					steal your token.
+				</p>
+				<p className="page-copy" style={{ marginTop: "0.4rem" }}>
+					So instead of failing, the app builds the exact command for you. Open
+					a file preview → <strong>Purge cache</strong>, fill in the fields,
+					then use <strong>Copy</strong> and paste it into a terminal:
+				</p>
+				<div style={{ display: "grid", gap: "0.65rem", marginTop: "0.65rem" }}>
+					<Step n={1} title="Zone ID">
+						Cloudflare dashboard → select your domain → Overview → API panel on
+						the right.
+					</Step>
+					<Step n={2} title="API token">
+						My Profile → API Tokens → Create Token → Custom token with{" "}
+						<code>Zone · Cache Purge</code> permission, scoped to this zone
+						only. Do not reuse a Global API Key.
+					</Step>
+					<Step n={3} title="Public CDN URL (recommended)">
+						The domain your visitors actually load these objects from, e.g.{" "}
+						<code>https://cdn.example.com</code>. Cloudflare can only purge a
+						single file if it knows that file's public URL — without it the
+						command falls back to purging the entire zone.
+					</Step>
+					<Step n={4} title="Copy and run">
+						The dialog offers one command for the open file and one for the
+						whole zone. Cloudflare replies <code>{'"success": true'}</code> when
+						the purge is accepted.
+					</Step>
+				</div>
+				<Code>{`curl -X POST 'https://api.cloudflare.com/client/v4/zones/<ZONE_ID>/purge_cache' \\
+  -H 'Authorization: Bearer <API_TOKEN>' \\
+  -H 'Content-Type: application/json' \\
+  --data '{"files":["https://cdn.example.com/docs/readme.md"]}'`}</Code>
+				<Note>
+					The command contains your API token in plain text. Prefer a token
+					scoped to <code>Zone · Cache Purge</code> on one zone, and clear your
+					shell history afterwards if that matters in your environment. Nothing
+					is transmitted when the command is generated — it is built locally and
+					only runs when you run it.
+				</Note>
+				<Note>
+					Purging is avoidable: if you set a short <code>Cache-Control</code>{" "}
+					(for example <code>max-age=60, must-revalidate</code>) on files you
+					edit often, the edge revalidates on its own. Editing a file in this
+					app preserves whatever <code>Cache-Control</code> the object already
+					has.
+				</Note>
 			</Section>
 
 			{/* Using the app */}

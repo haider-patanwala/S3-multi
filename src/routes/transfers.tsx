@@ -48,53 +48,49 @@ function TransfersPage() {
 	});
 
 	return (
-		<div className="space-y-6">
-			<section className="control-panel page-header px-5 py-5 lg:px-6 lg:py-6">
-				<div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-					<div>
-						<div className="section-label">Transfers</div>
-						<h2 className="page-title mt-2">Queue ledger</h2>
-						<p className="page-copy mt-3 max-w-3xl">
-							Upload and download metadata is persisted locally. Resume is
-							best-effort and surfaced only when the object endpoint supports
-							range reads.
-						</p>
-					</div>
-					<div className="page-stat-grid">
-						<div className="metric-card">
-							<div className="metric-label">Running</div>
-							<div className="metric-value text-2xl">{runningCount}</div>
-							<div className="metric-subtle">Live activity</div>
-						</div>
-						<div className="metric-card">
-							<div className="metric-label">Completed</div>
-							<div className="metric-value text-2xl">{completedCount}</div>
-							<div className="metric-subtle">Kept in local history</div>
-						</div>
-						<div className="metric-card">
-							<div className="metric-label">Failed</div>
-							<div className="metric-value text-2xl">{failedCount}</div>
-							<div className="metric-subtle">Needs retry or cleanup</div>
-						</div>
-					</div>
+		<div className="space-y-4">
+			<div className="stat-strip">
+				<div className="stat-strip-group">
+					<span className="stat-strip-item">
+						<span className="stat-strip-value">{runningCount}</span>
+						running
+					</span>
+					<span className="stat-strip-item">
+						<span className="stat-strip-value">{completedCount}</span>
+						completed
+					</span>
+					<span className="stat-strip-item">
+						<span
+							className={
+								failedCount
+									? "stat-strip-value stat-strip-value-alert"
+									: "stat-strip-value stat-strip-value-quiet"
+							}
+						>
+							{failedCount}
+						</span>
+						failed
+					</span>
 				</div>
-				<div className="mt-5 flex flex-wrap gap-3">
+				<div className="flex flex-wrap gap-2">
 					<button
-						className="button-secondary"
+						className="button-quiet"
+						disabled={!completedCount}
 						onClick={() => clearCompletedMutation.mutate()}
 						type="button"
 					>
 						Clear completed
 					</button>
 					<button
-						className="button-danger"
+						className="button-quiet"
+						disabled={!transfers.length}
 						onClick={() => clearAllMutation.mutate()}
 						type="button"
 					>
 						Clear all
 					</button>
 				</div>
-			</section>
+			</div>
 
 			<section className="control-panel px-5 py-5 lg:px-6">
 				{transfers.length ? (

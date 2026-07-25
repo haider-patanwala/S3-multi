@@ -1,12 +1,20 @@
 import {
+	ArrowRight01Icon,
 	CloudDownloadIcon,
 	CopyLinkIcon,
+	Database01Icon,
+	Delete02Icon,
 	DeleteThrowIcon,
 	EyeIcon,
 	FileEditIcon,
+	FolderAddIcon,
 	FolderOpenIcon,
-	MoreVerticalIcon,
+	GridViewIcon,
+	LeftToRightListBulletIcon,
+	MoreHorizontalIcon,
 	PencilIcon,
+	Search01Icon,
+	Upload01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +24,7 @@ import {
 	type DragEvent,
 	Fragment,
 	startTransition,
+	useCallback,
 	useDeferredValue,
 	useEffect,
 	useMemo,
@@ -23,7 +32,8 @@ import {
 	useState,
 } from "react";
 import { z } from "zod";
-import { Button, buttonVariants } from "../components/ui/button";
+import { extensionLabel, FileGlyph } from "../components/file-glyph";
+import { Button } from "../components/ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -40,7 +50,6 @@ import {
 	DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
-import { Textarea } from "../components/ui/textarea";
 import {
 	Select,
 	SelectContent,
@@ -48,13 +57,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "../components/ui/select";
+import { Textarea } from "../components/ui/textarea";
 import {
-	Table,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "../components/ui/table";
-import { purgeCache } from "../lib/cdn";
+	buildPurgeCommand,
+	canPurge,
+	type PurgeCommand,
+	purgeCache,
+} from "../lib/cdn";
 import {
 	getActiveProviderId,
 	saveProvider,
@@ -92,7 +101,6 @@ import {
 	formatBytes,
 	formatTimestamp,
 	isEditableTextContentType,
-	objectIcon,
 } from "../lib/utils";
 
 const searchSchema = z.object({
@@ -199,8 +207,10 @@ function BrowsePage() {
 		search.bucket ??
 		provider?.defaultBucket ??
 		recentBucketQuery.data ??
-		bucketsQuery.data?.[0];
+		bucketsQuery.data?.[0] ??
+		provider?.buckets?.[0];
 	const [searchInput, setSearchInput] = useState("");
+	const [bucketInput, setBucketInput] = useState("");
 	const deferredSearch = useDeferredValue(searchInput);
 	const objectListQuery = useQuery(
 		objectQueryOptions({
@@ -220,8 +230,19 @@ function BrowsePage() {
 	const [cfDistId, setCfDistId] = useState("");
 	const [cfZoneId, setCfZoneId] = useState("");
 	const [cfToken, setCfToken] = useState("");
-	const [_statusMessage, setStatusMessage] = useState(
-		"Select a provider and bucket to start browsing objects.",
+	const [cdnBaseUrl, setCdnBaseUrl] = useState("");
+	// This used to be `_statusMessage` — set in a dozen places and rendered
+	// nowhere, so every failure (including failed saves) was silent.
+	const [status, setStatus] = useState<{ text: string; error?: boolean }>({
+		text: "Select a provider and bucket to start browsing objects.",
+	});
+	const setStatusMessage = useCallback(
+		(text: string) => setStatus({ text }),
+		[],
+	);
+	const setErrorMessage = useCallback(
+		(text: string) => setStatus({ text, error: true }),
+		[],
 	);
 	const [isDragActive, setIsDragActive] = useState(false);
 	const [replaceTarget, setReplaceTarget] = useState<ObjectEntry | null>(null);
@@ -236,7 +257,7 @@ function BrowsePage() {
 	const rowVirtualizer = useVirtualizer({
 		count: objects.length,
 		getScrollElement: () => parentRef.current,
-		estimateSize: () => 82,
+		estimateSize: () => 56,
 		overscan: 8,
 	});
 
@@ -279,6 +300,57 @@ function BrowsePage() {
 			}
 		};
 	}, [preview]);
+
+	// A failed listing rendered as "no files" is indistinguishable from an empty
+	// bucket, so every fetch error here was invisible. Show it.
+	useEffect(() => {
+		const error = objectListQuery.error ?? bucketsQuery.error;
+		if (error) {
+			setErrorMessage(error.message);
+		}
+	}, [objectListQuery.error, bucketsQuery.error, setErrorMessage]);
+
+	// Successes fade; errors stay until dismissed.
+	useEffect(() => {
+		if (status.error || !status.text) {
+			return;
+		}
+		const timer = setTimeout(() => setStatus({ text: "" }), 5000);
+		return () => clearTimeout(timer);
+	}, [status]);
+
+	// Built from the live form fields, not the saved provider, so the command
+	// updates as the operator types and is correct before they hit Save.
+	const purgeCommands = useMemo(() => {
+		if (!provider) {
+			return [];
+		}
+		const draft = {
+			...provider,
+			cloudFrontDistributionId: cfDistId.trim() || undefined,
+			cloudflareZoneId: cfZoneId.trim() || undefined,
+			cloudflareApiToken: cfToken.trim() || undefined,
+			publicBaseUrl: cdnBaseUrl.trim() || undefined,
+		};
+		const entries: { label: string; value: PurgeCommand }[] = [];
+		if (previewKey) {
+			const single = buildPurgeCommand(draft, [previewKey]);
+			if (single) {
+				entries.push({
+					label: `Purge this file — ${previewKey}`,
+					value: single,
+				});
+			}
+		}
+		const all = buildPurgeCommand(draft);
+		if (all) {
+			entries.push({
+				label: previewKey ? "Purge everything" : "Purge everything in this CDN",
+				value: all,
+			});
+		}
+		return entries;
+	}, [provider, cfDistId, cfZoneId, cfToken, cdnBaseUrl, previewKey]);
 
 	const runningTransfers = useMemo(
 		() =>
@@ -383,7 +455,7 @@ function BrowsePage() {
 			}
 		},
 		onError: (error) => {
-			setStatusMessage(
+			setErrorMessage(
 				error instanceof Error ? error.message : "Download failed.",
 			);
 		},
@@ -413,7 +485,7 @@ function BrowsePage() {
 			setEditText(nextText ?? "");
 		},
 		onError: (error) => {
-			setStatusMessage(
+			setErrorMessage(
 				error instanceof Error ? error.message : "Preview failed.",
 			);
 		},
@@ -424,6 +496,8 @@ function BrowsePage() {
 			if (!(provider && bucket && preview && previewKey)) {
 				throw new Error("Nothing to save.");
 			}
+			// putObjectText writes then reads the object back, so reaching here
+			// means the bytes are really in the bucket.
 			await putObjectText(
 				provider,
 				bucket,
@@ -431,21 +505,49 @@ function BrowsePage() {
 				editText,
 				preview.contentType,
 			);
+
+			// A stale CDN copy is the other half of "my edit disappeared". AWS can
+			// purge in-app; R2 cannot (Cloudflare's API refuses browser calls), so
+			// there we point at the copy-paste command instead of failing. Either
+			// way a purge problem must never read as a save failure.
+			if (canPurge(provider)) {
+				const purge = await purgeCache(provider, [previewKey]).catch(
+					(error: unknown) =>
+						`Saved, but the CDN purge failed: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+				);
+				return { saved: editText, purge };
+			}
+			const needsManualPurge =
+				provider.type === "r2" &&
+				Boolean(provider.cloudflareZoneId && provider.cloudflareApiToken);
+			return {
+				saved: editText,
+				purge: needsManualPurge
+					? "CDN not purged — open Purge cache for the command to run."
+					: undefined,
+			};
 		},
-		onSuccess: async () => {
-			setTextPreview(editText);
-			setStatusMessage("Saved changes to the file.");
+		onSuccess: async ({ saved, purge }) => {
+			setTextPreview(saved);
+			setStatusMessage(
+				purge ? `Saved to ${bucket}. ${purge}` : `Saved to ${bucket}.`,
+			);
 			await queryClient.invalidateQueries({
 				queryKey: ["objects", provider?.id, bucket],
 			});
 		},
 		onError: (error) => {
-			setStatusMessage(error instanceof Error ? error.message : "Save failed.");
+			setErrorMessage(error instanceof Error ? error.message : "Save failed.");
 		},
 	});
 
+	// Saving the settings and purging are separate acts now: R2 cannot purge from
+	// the browser at all, so "save" has to stand on its own for the command
+	// builder to have anything to work with.
 	const purgeMutation = useMutation({
-		mutationFn: async () => {
+		mutationFn: async (options?: { purge?: boolean }) => {
 			if (!provider) {
 				throw new Error("Choose a provider first.");
 			}
@@ -454,17 +556,23 @@ function BrowsePage() {
 				cloudFrontDistributionId: cfDistId.trim() || undefined,
 				cloudflareZoneId: cfZoneId.trim() || undefined,
 				cloudflareApiToken: cfToken.trim() || undefined,
+				publicBaseUrl: cdnBaseUrl.trim() || undefined,
 			};
 			await saveProvider({ ...updated, createdAt: provider.createdAt });
-			return purgeCache(updated);
+			if (!options?.purge) {
+				return "Purge settings saved.";
+			}
+			return purgeCache(updated, previewKey ? [previewKey] : undefined);
 		},
-		onSuccess: async (message) => {
+		onSuccess: async (message, options) => {
 			setStatusMessage(message);
-			setPurgeOpen(false);
+			if (options?.purge) {
+				setPurgeOpen(false);
+			}
 			await queryClient.invalidateQueries({ queryKey: ["providers"] });
 		},
 		onError: (error) => {
-			setStatusMessage(
+			setErrorMessage(
 				error instanceof Error ? error.message : "Cache purge failed.",
 			);
 		},
@@ -489,7 +597,7 @@ function BrowsePage() {
 			});
 		},
 		onError: (error) => {
-			setStatusMessage(
+			setErrorMessage(
 				error instanceof Error ? error.message : "Delete failed.",
 			);
 		},
@@ -517,7 +625,7 @@ function BrowsePage() {
 			});
 		},
 		onError: (error) => {
-			setStatusMessage(
+			setErrorMessage(
 				error instanceof Error ? error.message : "Rename failed.",
 			);
 		},
@@ -617,7 +725,7 @@ function BrowsePage() {
 			await queryClient.invalidateQueries({ queryKey: ["transfers"] });
 		},
 		onError: (error) => {
-			setStatusMessage(
+			setErrorMessage(
 				error instanceof Error ? error.message : "Upload failed.",
 			);
 		},
@@ -722,7 +830,7 @@ function BrowsePage() {
 			await queryClient.invalidateQueries({ queryKey: ["transfers"] });
 		},
 		onError: (error) => {
-			setStatusMessage(
+			setErrorMessage(
 				error instanceof Error ? error.message : "Replace failed.",
 			);
 		},
@@ -742,6 +850,54 @@ function BrowsePage() {
 				0,
 			),
 		[objects],
+	);
+
+	const folderCount = useMemo(
+		() => objects.filter((item) => item.kind === "folder").length,
+		[objects],
+	);
+	const fileCount = objects.length - folderCount;
+
+	/*
+	 * Denominator for the weight rule under each row. Relative to the largest
+	 * item *in view*, not the bucket — the question being answered is "what is
+	 * heavy in this folder", and a bucket-wide scale would flatten every rule to
+	 * nothing the moment one huge object existed somewhere else.
+	 */
+	const maxVisibleSize = useMemo(
+		() =>
+			objects.reduce(
+				(largest, item) =>
+					item.kind === "file" ? Math.max(largest, item.size) : largest,
+				0,
+			),
+		[objects],
+	);
+
+	const copyObjectUrl = useCallback(
+		async (item: ObjectEntry) => {
+			if (!(provider && bucket)) {
+				return;
+			}
+			const url = buildObjectUrl(provider, bucket, item.key);
+			if (!url) {
+				setErrorMessage("Direct URL unavailable for this provider.");
+				return;
+			}
+			await navigator.clipboard.writeText(url);
+			setStatusMessage(`Copied URL for ${item.name}.`);
+		},
+		[bucket, provider, setErrorMessage, setStatusMessage],
+	);
+
+	const openBucket = useCallback(
+		(nextBucket: string) => {
+			void navigate({
+				search: (current) => ({ ...current, bucket: nextBucket, prefix: "" }),
+			});
+			setStatusMessage(`Opened bucket ${nextBucket}.`);
+		},
+		[navigate, setStatusMessage],
 	);
 
 	const bucketOptions = useMemo(
@@ -822,24 +978,17 @@ function BrowsePage() {
 
 	if (!providers.length) {
 		return (
-			<section className="control-panel px-6 py-8">
-				<div className="section-label">Browser</div>
-				<h2 className="page-title mt-2">No provider configured</h2>
-				<p className="page-copy mt-4 max-w-2xl">
-					Create at least one provider profile before browsing objects. The app
-					stores credentials only in the browser and uses direct S3 API
-					requests.
+			<div className="empty-state">
+				<FileGlyph item={{ kind: "folder", key: "" }} open size="lg" />
+				<h2 className="page-subtitle">No provider configured</h2>
+				<p className="page-copy max-w-md">
+					Add a provider profile to start browsing. Credentials stay in this
+					browser and requests go straight to the S3 API.
 				</p>
-				<Link
-					className={cn(
-						buttonVariants({ size: "sm", variant: "default" }),
-						"mt-6",
-					)}
-					to="/providers"
-				>
+				<Link className="button-primary mt-1" to="/providers">
 					Open providers
 				</Link>
-			</section>
+			</div>
 		);
 	}
 
@@ -870,576 +1019,398 @@ function BrowsePage() {
 				type="file"
 			/>
 
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="flex flex-wrap items-center gap-2">
-					<div className="browser-breadcrumbs">
-						<Button
-							className="text-neutral-300 text-xs!"
-							variant="link"
-							size="xs"
-							onClick={() =>
-								void navigate({
-									search: (current) => ({ ...current, prefix: "" }),
-								})
-							}
-							type="button"
-						>
-							{bucket ?? "root"}
-						</Button>
-						{pathSegments.length > 0 && (
-							<span className="browser-breadcrumb-separator">/</span>
+			<div className="browser-toolbar">
+				<div className="browser-breadcrumbs">
+					<button
+						className={cn(
+							"crumb crumb-root",
+							!pathSegments.length && "crumb-current",
 						)}
-						{pathSegments.map((segment, index) => {
-							const nextPrefix = `${pathSegments.slice(0, index + 1).join("/")}/`;
-							return (
-								<Fragment key={nextPrefix}>
-									<Button
-										className="justify-start! max-w-24 truncate text-left! text-neutral-300 text-xs!"
-										variant="link"
-										size="xs"
-										onClick={() =>
-											void navigate({
-												search: (current) => ({
-													...current,
-													prefix: nextPrefix,
-												}),
-											})
-										}
-										type="button"
-									>
-										{segment}
-									</Button>
-									{index < pathSegments.length - 1 && (
-										<span className="browser-breadcrumb-separator">/</span>
-									)}
-								</Fragment>
-							);
-						})}
-					</div>
-					<span className="browser-kpi-chip">
-						<strong>{objects.length}</strong> objects
-					</span>
-					<span className="browser-kpi-chip">
-						<strong>{formatBytes(visibleBytes)}</strong>
-					</span>
-					{runningTransfers.length > 0 && (
-						<span className="browser-kpi-chip">
-							<strong>{runningTransfers.length}</strong> transfer
-							{runningTransfers.length === 1 ? "" : "s"}
-						</span>
-					)}
-				</div>
-				<div className="flex flex-wrap items-center justify-end gap-2">
-					<div className="browser-actions">
-						<input
-							className="sr-only"
-							id="upload-input"
-							multiple
-							onChange={(event) => {
-								const files = Array.from(event.target.files ?? []);
-								if (files.length) {
-									uploadMutation.mutate(files);
-								}
-								event.target.value = "";
-							}}
-							type="file"
-						/>
-						<label
-							className={cn(
-								buttonVariants({ size: "xs", variant: "default" }),
-								"cursor-pointer",
-							)}
-							htmlFor="upload-input"
-						>
-							Upload
-						</label>
-						<Button
-							onClick={() => {
-								setFolderName("");
-								setFolderDialogOpen(true);
-							}}
-							size="xs"
-							className="text-xs!"
-							type="button"
-							variant="outline"
-						>
-							New folder
-						</Button>
-						<Button
-							disabled={!selectedKeys.length}
-							onClick={() => setDeleteConfirmOpen(true)}
-							size="xs"
-							className="text-xs!"
-							type="button"
-							variant="destructive"
-						>
-							Delete
-						</Button>
-					</div>
-					<div className="flex gap-1">
-						<button
-							className={cn(
-								"toggle-button",
-								search.view === "list" && "toggle-button-active",
-							)}
-							onClick={() =>
-								void navigate({
-									search: (current) => ({
-										...current,
-										view: "list" satisfies BrowserView,
-									}),
-								})
-							}
-							type="button"
-						>
-							List
-						</button>
-						<button
-							className={cn(
-								"toggle-button",
-								search.view === "grid" && "toggle-button-active",
-							)}
-							onClick={() =>
-								void navigate({
-									search: (current) => ({
-										...current,
-										view: "grid" satisfies BrowserView,
-									}),
-								})
-							}
-							type="button"
-						>
-							Grid
-						</button>
-					</div>
-				</div>
-			</div>
-
-			<section className="control-panel browser-workspace px-4 py-4 lg:px-5 lg:py-5">
-				<div className="browser-toolbar">
-					<div className="compact-toolbar">
-						<div className="field">
-							<span>Provider</span>
-							<Select
-								onValueChange={(nextProviderId) => {
-									if (!nextProviderId) {
-										return;
-									}
-									startTransition(() => {
-										void navigate({
-											search: () => ({
-												providerId: nextProviderId,
-												bucket: "",
-												prefix: "",
-												view: search.view,
-											}),
-										});
-									});
-									void setActiveProviderId(nextProviderId);
-									void queryClient.invalidateQueries({
-										queryKey: ["providers", "active"],
-									});
-								}}
-								value={provider?.id}
-							>
-								<SelectTrigger className="w-full">
-									<SelectValue placeholder="Select provider">
-										{provider?.name ?? "Select provider"}
-									</SelectValue>
-								</SelectTrigger>
-								<SelectContent align="start">
-									{providers.map((entry) => (
-										<SelectItem key={entry.id} value={entry.id}>
-											{entry.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-
-						<div className="field">
-							<span>Bucket</span>
-							<Select
-								onValueChange={(nextBucket) => {
-									if (!nextBucket) {
-										return;
-									}
-									void navigate({
-										search: (current) => ({
-											...current,
-											bucket: nextBucket,
-											prefix: "",
-										}),
-									});
-									setStatusMessage(`Opened bucket ${nextBucket}.`);
-								}}
-								value={bucket}
-							>
-								<SelectTrigger className="w-full">
-									<SelectValue placeholder="Select bucket" />
-								</SelectTrigger>
-								<SelectContent align="start">
-									{bucketOptions.map((entry) => (
-										<SelectItem key={entry} value={entry}>
-											{entry}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-
-						<label className="field">
-							<span>Search</span>
-							<input
-								className="input"
-								onChange={(event) => setSearchInput(event.target.value)}
-								placeholder="Filter visible objects"
-								value={searchInput}
-							/>
-						</label>
-					</div>
-
-					<div>
-						{bucketsQuery.data?.length ? null : (
-							<div className="field-note mt-3">
-								No buckets are available to show. If this is R2, account-level
-								listing may be blocked by browser CORS.
-							</div>
-						)}
-					</div>
-				</div>
-
-				{/* biome-ignore lint/a11y/noStaticElementInteractions: this section is a drag-and-drop target for file uploads, not a click target */}
-				<section
-					className={cn(
-						"file-dropzone",
-						isDragActive && "file-dropzone-active",
-					)}
-					onDragEnter={handleDragEnter}
-					onDragLeave={handleDragLeave}
-					onDragOver={handleDragOver}
-					onDrop={handleDrop}
-				>
-					{isDragActive ? (
-						<div className="drop-overlay">
-							<div className="drop-overlay-inner">
-								<div className="section-label">Drop files to upload</div>
-								<div className="drop-title">
-									Release to send into {bucket ?? "current bucket"}
-								</div>
-								<div className="drop-copy">
-									Files will upload into the current prefix:
-									<span className="drop-accent ml-2">
-										{search.prefix || "/"}
-									</span>
-								</div>
-							</div>
-						</div>
-					) : null}
-					{search.view === "grid" ? (
-						<div className="object-grid">
-							{objects.map((item) => (
-								<ObjectCard
-									item={item}
-									key={item.key}
-									onDelete={() => deleteMutation.mutate([item.key])}
-									onDownload={() => downloadMutation.mutate(item)}
-									onOpenFolder={() =>
+						onClick={() =>
+							void navigate({
+								search: (current) => ({ ...current, prefix: "" }),
+							})
+						}
+						type="button"
+					>
+						<HugeiconsIcon icon={Database01Icon} size={14} strokeWidth={1.5} />
+						{bucket ?? "root"}
+					</button>
+					{pathSegments.map((segment, index) => {
+						const nextPrefix = `${pathSegments.slice(0, index + 1).join("/")}/`;
+						const isLast = index === pathSegments.length - 1;
+						return (
+							<Fragment key={nextPrefix}>
+								<span className="browser-breadcrumb-separator">
+									<HugeiconsIcon
+										icon={ArrowRight01Icon}
+										size={13}
+										strokeWidth={1.5}
+									/>
+								</span>
+								<button
+									className={cn("crumb", isLast && "crumb-current")}
+									onClick={() =>
 										void navigate({
 											search: (current) => ({
 												...current,
-												prefix: item.key,
+												prefix: nextPrefix,
 											}),
 										})
 									}
-									onPreview={() => previewMutation.mutate(item)}
-									onReplace={() => openReplacePicker(item)}
-									onRename={() => {
-										setRenameTarget(item);
-										setRenameValue(item.name);
-									}}
-									onSelect={(checked) =>
-										setSelectedKeys((current) =>
-											checked
-												? [...new Set([...current, item.key])]
-												: current.filter((entry) => entry !== item.key),
+									type="button"
+								>
+									{segment}
+								</button>
+							</Fragment>
+						);
+					})}
+				</div>
+
+				<div className="browser-actions">
+					<span className="browser-kpi-chip">
+						{folderCount ? `${folderCount} ▸ ` : ""}
+						{fileCount} {fileCount === 1 ? "file" : "files"}
+						{visibleBytes > 0 ? ` · ${formatBytes(visibleBytes)}` : ""}
+					</span>
+					<input
+						className="sr-only"
+						id="upload-input"
+						multiple
+						onChange={(event) => {
+							const files = Array.from(event.target.files ?? []);
+							if (files.length) {
+								uploadMutation.mutate(files);
+							}
+							event.target.value = "";
+						}}
+						type="file"
+					/>
+					<label
+						className="button-primary cursor-pointer"
+						htmlFor="upload-input"
+					>
+						<HugeiconsIcon icon={Upload01Icon} size={15} strokeWidth={1.5} />
+						Upload
+					</label>
+					<button
+						className="button-secondary"
+						onClick={() => {
+							setFolderName("");
+							setFolderDialogOpen(true);
+						}}
+						type="button"
+					>
+						<HugeiconsIcon icon={FolderAddIcon} size={15} strokeWidth={1.5} />
+						New folder
+					</button>
+					{selectedKeys.length > 0 && (
+						<button
+							className="button-danger"
+							onClick={() => setDeleteConfirmOpen(true)}
+							type="button"
+						>
+							<HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={1.5} />
+							Delete {selectedKeys.length}
+						</button>
+					)}
+				</div>
+			</div>
+
+			<div className="browser-toolbar">
+				<div className="flex flex-wrap items-center gap-2">
+					<Select
+						onValueChange={(nextProviderId) => {
+							if (!nextProviderId) {
+								return;
+							}
+							startTransition(() => {
+								void navigate({
+									search: () => ({
+										providerId: nextProviderId,
+										bucket: "",
+										prefix: "",
+										view: search.view,
+									}),
+								});
+							});
+							void setActiveProviderId(nextProviderId);
+							void queryClient.invalidateQueries({
+								queryKey: ["providers", "active"],
+							});
+						}}
+						value={provider?.id}
+					>
+						<SelectTrigger className="h-[30px] w-[168px]" size="sm">
+							<SelectValue placeholder="Select provider">
+								{provider?.name ?? "Select provider"}
+							</SelectValue>
+						</SelectTrigger>
+						<SelectContent align="start">
+							{providers.map((entry) => (
+								<SelectItem key={entry.id} value={entry.id}>
+									{entry.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+
+					{/*
+					 * ListBuckets is blocked in the browser for most R2/scoped-token setups,
+					 * so a picker is sometimes the only control over a list that can never
+					 * populate. Fall back to typing the name.
+					 */}
+					{bucketOptions.length ? (
+						<Select
+							onValueChange={(nextBucket) => {
+								if (!nextBucket) {
+									return;
+								}
+								openBucket(nextBucket);
+							}}
+							value={bucket}
+						>
+							<SelectTrigger className="h-[30px] w-[168px]" size="sm">
+								<SelectValue placeholder="Select bucket" />
+							</SelectTrigger>
+							<SelectContent align="start">
+								{bucketOptions.map((entry) => (
+									<SelectItem key={entry} value={entry}>
+										{entry}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					) : (
+						<form
+							onSubmit={(event) => {
+								event.preventDefault();
+								const next = bucketInput.trim();
+								if (next) {
+									openBucket(next);
+								}
+							}}
+						>
+							<div className="search-field w-[168px]">
+								<input
+									aria-label="Bucket name"
+									onChange={(event) => setBucketInput(event.target.value)}
+									placeholder="Bucket name…"
+									value={bucketInput}
+								/>
+							</div>
+						</form>
+					)}
+
+					<div className="search-field">
+						<HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={1.5} />
+						<input
+							onChange={(event) => setSearchInput(event.target.value)}
+							placeholder="Filter this folder"
+							value={searchInput}
+						/>
+					</div>
+				</div>
+
+				<div className="view-switch">
+					{(
+						[
+							["list", LeftToRightListBulletIcon, "List"],
+							["grid", GridViewIcon, "Grid"],
+						] as const
+					).map(([view, icon, label]) => (
+						<button
+							className="view-switch-item"
+							data-active={search.view === view}
+							key={view}
+							onClick={() =>
+								void navigate({
+									search: (current) => ({
+										...current,
+										view: view satisfies BrowserView,
+									}),
+								})
+							}
+							title={`${label} view`}
+							type="button"
+						>
+							<HugeiconsIcon icon={icon} size={15} strokeWidth={1.5} />
+						</button>
+					))}
+				</div>
+			</div>
+
+			{bucketsQuery.data?.length ? null : (
+				<div className="field-note">
+					No buckets are available to show. If this is R2, account-level listing
+					may be blocked by browser CORS.
+				</div>
+			)}
+
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: this section is a drag-and-drop target for file uploads, not a click target */}
+			<section
+				className="relative min-w-0"
+				onDragEnter={handleDragEnter}
+				onDragLeave={handleDragLeave}
+				onDragOver={handleDragOver}
+				onDrop={handleDrop}
+			>
+				{isDragActive ? (
+					<div className="drop-veil">
+						Drop to upload into {search.prefix || "/"}
+					</div>
+				) : null}
+
+				{objects.length === 0 ? (
+					<div className="empty-state">
+						<FileGlyph item={{ kind: "folder", key: "" }} open size="lg" />
+						<div className="page-subtitle">
+							{searchInput
+								? "Nothing matches that filter"
+								: "This folder is empty"}
+						</div>
+						<p className="page-copy max-w-sm">
+							{searchInput
+								? "Clear the filter to see everything in this prefix."
+								: "Drop files here to upload them into this prefix."}
+						</p>
+					</div>
+				) : search.view === "grid" ? (
+					<div className="object-grid">
+						{objects.map((item) => (
+							<ObjectCard
+								item={item}
+								key={item.key}
+								maxSize={maxVisibleSize}
+								onDelete={() => deleteMutation.mutate([item.key])}
+								onDownload={() => downloadMutation.mutate(item)}
+								onOpenFolder={() =>
+									void navigate({
+										search: (current) => ({
+											...current,
+											prefix: item.key,
+										}),
+									})
+								}
+								onPreview={() => previewMutation.mutate(item)}
+								onReplace={() => openReplacePicker(item)}
+								onRename={() => {
+									setRenameTarget(item);
+									setRenameValue(item.name);
+								}}
+								onSelect={(checked) =>
+									setSelectedKeys((current) =>
+										checked
+											? [...new Set([...current, item.key])]
+											: current.filter((entry) => entry !== item.key),
+									)
+								}
+								onShare={() => copyObjectUrl(item)}
+								selected={selectedKeys.includes(item.key)}
+							/>
+						))}
+					</div>
+				) : (
+					<div className="entry-list">
+						<div className="entry-head">
+							<div className="entry-check">
+								<input
+									aria-label="Select all"
+									checked={
+										selectedKeys.length > 0 &&
+										selectedKeys.length === objects.length
+									}
+									onChange={(event) =>
+										setSelectedKeys(
+											event.target.checked
+												? objects.map((entry) => entry.key)
+												: [],
 										)
 									}
-									onShare={async () => {
-										if (!provider || !bucket) {
-											return;
-										}
-										const url = buildObjectUrl(provider, bucket, item.key);
-										if (!url) {
-											setStatusMessage(
-												"Direct URL unavailable for this provider.",
-											);
-											return;
-										}
-										await navigator.clipboard.writeText(url);
-										setStatusMessage(`Copied URL for ${item.name}.`);
-									}}
-									selected={selectedKeys.includes(item.key)}
+									type="checkbox"
 								/>
-							))}
+							</div>
+							<span />
+							<span className="section-label">Name</span>
+							<span className="section-label entry-hide-sm">Type</span>
+							<span className="section-label entry-hide-sm">Size</span>
+							<span className="section-label entry-hide-sm">Modified</span>
+							<span />
 						</div>
-					) : (
-						<div className="overflow-hidden rounded-lg border border-border">
-							<Table>
-								<TableHeader>
-									<TableRow className="border-b-border hover:bg-transparent">
-										<TableHead className="w-8 px-3" />
-										<TableHead>Name</TableHead>
-										<TableHead className="w-24">Size</TableHead>
-										<TableHead className="w-36">Updated</TableHead>
-										<TableHead className="w-24 pr-3 text-right">
-											Actions
-										</TableHead>
-									</TableRow>
-								</TableHeader>
-							</Table>
+						<div
+							className="entry-scroll max-h-[calc(100vh-260px)] min-h-[320px]"
+							ref={parentRef}
+						>
 							<div
-								className="max-h-[calc(100vh-320px)] min-h-[400px] overflow-auto"
-								ref={parentRef}
+								className="relative"
+								style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
 							>
-								<div
-									className="relative"
-									style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-								>
-									{rowVirtualizer.getVirtualItems().map((virtualItem) => {
-										const item = objects[virtualItem.index];
-										return (
-											<div
-												className="absolute right-0 left-0 flex items-center border-border border-b transition-colors hover:bg-[rgba(255,255,255,0.025)]"
-												key={item.key}
-												style={{
-													height: `${virtualItem.size}px`,
-													transform: `translateY(${virtualItem.start}px)`,
+								{rowVirtualizer.getVirtualItems().map((virtualItem) => {
+									const item = objects[virtualItem.index];
+									return (
+										<div
+											className="absolute right-0 left-0"
+											key={item.key}
+											style={{
+												height: `${virtualItem.size}px`,
+												transform: `translateY(${virtualItem.start}px)`,
+											}}
+										>
+											<EntryRow
+												item={item}
+												maxSize={maxVisibleSize}
+												onDelete={() => deleteMutation.mutate([item.key])}
+												onDownload={() => downloadMutation.mutate(item)}
+												onOpenFolder={() =>
+													void navigate({
+														search: (current) => ({
+															...current,
+															prefix: item.key,
+														}),
+													})
+												}
+												onPreview={() => previewMutation.mutate(item)}
+												onReplace={() => openReplacePicker(item)}
+												onRename={() => {
+													setRenameTarget(item);
+													setRenameValue(item.name);
 												}}
-											>
-												<div className="w-8 shrink-0 px-3">
-													<input
-														checked={selectedKeys.includes(item.key)}
-														onChange={(event) =>
-															setSelectedKeys((current) =>
-																event.target.checked
-																	? [...new Set([...current, item.key])]
-																	: current.filter(
-																			(entry) => entry !== item.key,
-																		),
-															)
-														}
-														type="checkbox"
-													/>
-												</div>
-												<div className="min-w-0 flex-1 px-2">
-													<button
-														className="inline-flex items-center gap-2 border-none bg-transparent p-0 text-left text-(--text) text-sm"
-														onClick={() => {
-															if (item.kind === "folder") {
-																void navigate({
-																	search: (current) => ({
-																		...current,
-																		prefix: item.key,
-																	}),
-																});
-																return;
-															}
-															if (item.isPreviewable) {
-																previewMutation.mutate(item);
-															}
-														}}
-														type="button"
-													>
-														<span className="icon-chip">
-															{item.kind === "folder"
-																? "DIR"
-																: objectIcon(item.key)}
-														</span>
-														<span className="truncate">{item.name}</span>
-													</button>
-												</div>
-												<div className="w-24 shrink-0 px-2 text-(--text-soft) text-sm">
-													{item.kind === "folder"
-														? "Folder"
-														: formatBytes(item.size)}
-												</div>
-												<div className="w-36 shrink-0 px-2 text-muted text-sm">
-													{formatTimestamp(item.lastModified)}
-												</div>
-												<div className="flex w-28 shrink-0 items-center justify-end gap-1 px-2">
-													{item.kind === "folder" ? (
-														<Button
-															onClick={() =>
-																void navigate({
-																	search: (current) => ({
-																		...current,
-																		prefix: item.key,
-																	}),
-																})
-															}
-															size="xs"
-															title="Open folder"
-															type="button"
-															variant="outline"
-															className="gap-1 text-xs!"
-														>
-															<HugeiconsIcon
-																icon={FolderOpenIcon}
-																strokeWidth={2}
-															/>
-															<span className="text-xs!">Open</span>
-														</Button>
-													) : (
-														<Button
-															onClick={() => downloadMutation.mutate(item)}
-															size="xs"
-															title="Download"
-															type="button"
-															variant="default"
-															className="gap-1 text-xs!"
-														>
-															<HugeiconsIcon
-																icon={CloudDownloadIcon}
-																strokeWidth={2}
-															/>
-															<span className="text-xs!">Download</span>
-														</Button>
-													)}
-													<DropdownMenu>
-														<DropdownMenuTrigger
-															render={
-																<Button
-																	size="icon-xs"
-																	title="More actions"
-																	variant="ghost"
-																/>
-															}
-														>
-															<HugeiconsIcon
-																icon={MoreVerticalIcon}
-																strokeWidth={2}
-															/>
-														</DropdownMenuTrigger>
-														<DropdownMenuContent align="end" side="bottom">
-															{item.kind === "file" && item.isPreviewable && (
-																<DropdownMenuItem
-																	onClick={() => previewMutation.mutate(item)}
-																>
-																	<HugeiconsIcon
-																		icon={EyeIcon}
-																		strokeWidth={2}
-																	/>
-																	Preview
-																</DropdownMenuItem>
-															)}
-															{item.kind === "file" && (
-																<DropdownMenuItem
-																	onClick={() => downloadMutation.mutate(item)}
-																>
-																	<HugeiconsIcon
-																		icon={CloudDownloadIcon}
-																		strokeWidth={2}
-																	/>
-																	Download
-																</DropdownMenuItem>
-															)}
-															{item.kind === "file" && (
-																<DropdownMenuItem
-																	onClick={() => {
-																		setRenameTarget(item);
-																		setRenameValue(item.name);
-																	}}
-																>
-																	<HugeiconsIcon
-																		icon={PencilIcon}
-																		strokeWidth={2}
-																	/>
-																	Rename
-																</DropdownMenuItem>
-															)}
-															{item.kind === "file" && (
-																<DropdownMenuItem
-																	onClick={() => openReplacePicker(item)}
-																>
-																	<HugeiconsIcon
-																		icon={FileEditIcon}
-																		strokeWidth={2}
-																	/>
-																	Replace
-																</DropdownMenuItem>
-															)}
-															{item.kind === "file" && (
-																<DropdownMenuItem
-																	onClick={async () => {
-																		if (!provider || !bucket) return;
-																		const url = buildObjectUrl(
-																			provider,
-																			bucket,
-																			item.key,
-																		);
-																		if (!url) {
-																			setStatusMessage(
-																				"Direct URL unavailable for this provider.",
-																			);
-																			return;
-																		}
-																		await navigator.clipboard.writeText(url);
-																		setStatusMessage(
-																			`Copied URL for ${item.name}.`,
-																		);
-																	}}
-																>
-																	<HugeiconsIcon
-																		icon={CopyLinkIcon}
-																		strokeWidth={2}
-																	/>
-																	Copy URL
-																</DropdownMenuItem>
-															)}
-															{item.kind === "folder" && (
-																<DropdownMenuItem
-																	onClick={() =>
-																		void navigate({
-																			search: (current) => ({
-																				...current,
-																				prefix: item.key,
-																			}),
-																		})
-																	}
-																>
-																	<HugeiconsIcon
-																		icon={FolderOpenIcon}
-																		strokeWidth={2}
-																	/>
-																	Open
-																</DropdownMenuItem>
-															)}
-															<DropdownMenuSeparator />
-															<DropdownMenuItem
-																onClick={() =>
-																	deleteMutation.mutate([item.key])
-																}
-																variant="destructive"
-															>
-																<HugeiconsIcon
-																	icon={DeleteThrowIcon}
-																	strokeWidth={2}
-																/>
-																Delete
-															</DropdownMenuItem>
-														</DropdownMenuContent>
-													</DropdownMenu>
-												</div>
-											</div>
-										);
-									})}
-								</div>
+												onSelect={(checked) =>
+													setSelectedKeys((current) =>
+														checked
+															? [...new Set([...current, item.key])]
+															: current.filter((entry) => entry !== item.key),
+													)
+												}
+												onShare={() => copyObjectUrl(item)}
+												selected={selectedKeys.includes(item.key)}
+											/>
+										</div>
+									);
+								})}
 							</div>
 						</div>
-					)}
-				</section>
+					</div>
+				)}
 			</section>
+
+			{status.error ? (
+				<div className="status-banner status-banner-error" role="alert">
+					<span>{status.text}</span>
+					<Button
+						onClick={() => setStatusMessage("")}
+						size="xs"
+						type="button"
+						variant="outline"
+					>
+						Dismiss
+					</Button>
+				</div>
+			) : status.text ? (
+				<div className="status-banner" role="status">
+					{status.text}
+				</div>
+			) : null}
 
 			{transferToasts.length ? (
 				<div className="toast-stack">
@@ -1507,6 +1478,7 @@ function BrowsePage() {
 											setCfDistId(provider.cloudFrontDistributionId ?? "");
 											setCfZoneId(provider.cloudflareZoneId ?? "");
 											setCfToken(provider.cloudflareApiToken ?? "");
+											setCdnBaseUrl(provider.publicBaseUrl ?? "");
 											setPurgeOpen(true);
 										}}
 										size="sm"
@@ -1576,14 +1548,15 @@ function BrowsePage() {
 					<DialogHeader>
 						<DialogTitle>Purge CDN cache</DialogTitle>
 						<DialogDescription>
-							Invalidates the entire distribution/zone so viewers get the latest
-							objects. Keys are stored encrypted with this provider.
+							{provider?.type === "r2"
+								? "Cloudflare's API refuses browser calls, so this builds a command for you to run yourself. Credentials are stored encrypted with this provider and never leave your machine."
+								: "Invalidates the distribution so viewers get the latest objects. Credentials are stored encrypted with this provider."}
 						</DialogDescription>
 					</DialogHeader>
 					<form
 						onSubmit={(event) => {
 							event.preventDefault();
-							purgeMutation.mutate();
+							purgeMutation.mutate({});
 						}}
 					>
 						{provider?.type === "aws" ? (
@@ -1600,9 +1573,9 @@ function BrowsePage() {
 								/>
 								<p className="text-muted-foreground text-xs">
 									AWS Console → CloudFront → Distributions → copy the ID of the
-									distribution serving this bucket. Uses this provider's existing
-									access key (needs the <code>cloudfront:CreateInvalidation</code>{" "}
-									IAM permission).
+									distribution serving this bucket. Uses this provider's
+									existing access key (needs the{" "}
+									<code>cloudfront:CreateInvalidation</code> IAM permission).
 								</p>
 							</div>
 						) : provider?.type === "r2" ? (
@@ -1628,42 +1601,121 @@ function BrowsePage() {
 									value={cfToken}
 								/>
 								<p className="text-muted-foreground text-xs">
-									Zone ID: Cloudflare dashboard → select your domain → Overview →
-									API panel (right side). Token: My Profile → API Tokens → Create
-									Token → give it <code>Zone · Cache Purge</code> permission for
-									this zone. Note: Cloudflare's API blocks direct browser calls
-									(CORS) — if the purge fails, route it through a proxy.
+									Zone ID: Cloudflare dashboard → select your domain → Overview
+									→ API panel (right side). Token: My Profile → API Tokens →
+									Create Token → give it <code>Zone · Cache Purge</code>{" "}
+									permission for this zone.
 								</p>
 							</div>
 						) : (
 							<p className="text-muted-foreground text-sm">
-								Cache purge is only available for AWS (CloudFront) and Cloudflare
-								R2 providers.
+								Cache purge is only available for AWS (CloudFront) and
+								Cloudflare R2 providers.
 							</p>
 						)}
-						<DialogFooter className="mt-4">
+						{provider?.type === "aws" || provider?.type === "r2" ? (
+							<div className="mt-4 flex flex-col gap-2">
+								<label className="section-label" htmlFor="cdn-base">
+									Public CDN URL (optional)
+								</label>
+								<Input
+									id="cdn-base"
+									onChange={(event) => setCdnBaseUrl(event.target.value)}
+									placeholder="https://cdn.example.com"
+									value={cdnBaseUrl}
+								/>
+								<p className="text-muted-foreground text-xs">
+									The domain your visitors load these objects from. Set it and
+									saving a file purges just that file instead of the whole
+									zone/distribution.
+								</p>
+							</div>
+						) : null}
+						{purgeCommands.length ? (
+							<div className="mt-5 flex flex-col gap-4">
+								<div className="section-label">
+									{provider?.type === "r2"
+										? "Run this in your terminal"
+										: "Or run it from your terminal"}
+								</div>
+								{purgeCommands.map((entry) => (
+									<div className="flex flex-col gap-2" key={entry.label}>
+										<div className="flex items-center justify-between gap-3">
+											<span className="font-medium text-sm">{entry.label}</span>
+											<Button
+												onClick={async () => {
+													await navigator.clipboard.writeText(
+														entry.value.command,
+													);
+													setStatusMessage(`Copied: ${entry.label}.`);
+												}}
+												size="xs"
+												type="button"
+												variant="outline"
+											>
+												Copy
+											</Button>
+										</div>
+										<pre className="preview-code max-h-48 overflow-auto text-xs">
+											{entry.value.command}
+										</pre>
+										<p className="text-muted-foreground text-xs">
+											{entry.value.scope}
+										</p>
+										{entry.value.notes.map((note) => (
+											<p className="text-destructive text-xs" key={note}>
+												{note}
+											</p>
+										))}
+									</div>
+								))}
+								{provider?.type === "r2" ? (
+									<p className="text-muted-foreground text-xs">
+										Paste it into a terminal after saving a file. The token is
+										visible in the command — prefer a token scoped to{" "}
+										<code>Zone · Cache Purge</code> on this zone only, and clear
+										your shell history if that matters to you. Cloudflare
+										replies <code>{'"success": true'}</code> when the purge is
+										accepted; edge propagation takes a few seconds.
+									</p>
+								) : (
+									<p className="text-muted-foreground text-xs">
+										Requires the AWS CLI and credentials with{" "}
+										<code>cloudfront:CreateInvalidation</code>. The in-app
+										button below does the same thing without leaving the
+										browser.
+									</p>
+								)}
+							</div>
+						) : null}
+						<DialogFooter className="mt-5">
 							<Button
 								onClick={() => setPurgeOpen(false)}
 								size="xs"
 								type="button"
 								variant="outline"
 							>
-								Cancel
+								Close
 							</Button>
 							<Button
-								disabled={
-									purgeMutation.isPending ||
-									(provider?.type === "aws" && !cfDistId.trim()) ||
-									(provider?.type === "r2" &&
-										!(cfZoneId.trim() && cfToken.trim())) ||
-									(provider?.type !== "aws" && provider?.type !== "r2")
-								}
+								disabled={purgeMutation.isPending}
 								size="xs"
 								type="submit"
-								variant="default"
+								variant="outline"
 							>
-								{purgeMutation.isPending ? "Purging…" : "Save & purge"}
+								{purgeMutation.isPending ? "Saving…" : "Save settings"}
 							</Button>
+							{provider?.type === "aws" ? (
+								<Button
+									disabled={purgeMutation.isPending || !cfDistId.trim()}
+									onClick={() => purgeMutation.mutate({ purge: true })}
+									size="xs"
+									type="button"
+									variant="default"
+								>
+									{purgeMutation.isPending ? "Purging…" : "Save & purge now"}
+								</Button>
+							) : null}
 						</DialogFooter>
 					</form>
 				</DialogContent>
@@ -1832,7 +1884,7 @@ function BrowsePage() {
 	);
 }
 
-function ObjectCard(props: {
+type EntryActions = {
 	item: ObjectEntry;
 	selected: boolean;
 	onSelect: (checked: boolean) => void;
@@ -1843,119 +1895,179 @@ function ObjectCard(props: {
 	onRename: () => void;
 	onDelete: () => void;
 	onShare: () => void;
-}) {
+};
+
+/** Shared overflow menu — identical in list and grid, so it lives in one place. */
+function EntryMenu(props: EntryActions) {
 	const { item } = props;
+	const isFile = item.kind === "file";
 	return (
-		<div className="object-card">
-			<div className="flex items-start justify-between gap-4">
-				<label className="inline-flex items-center gap-3">
-					<input
-						checked={props.selected}
-						onChange={(event) => props.onSelect(event.target.checked)}
-						type="checkbox"
-					/>
-					<span className="icon-chip">
-						{item.kind === "folder" ? "DIR" : objectIcon(item.key)}
-					</span>
-				</label>
-				<span className="pill">
-					{item.kind === "folder"
-						? "folder"
-						: item.isPreviewable
-							? "viewable"
-							: "file"}
-				</span>
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				render={<Button size="icon-xs" title="More actions" variant="ghost" />}
+			>
+				<HugeiconsIcon icon={MoreHorizontalIcon} size={15} strokeWidth={1.5} />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" side="bottom">
+				{isFile && item.isPreviewable && (
+					<DropdownMenuItem onClick={props.onPreview}>
+						<HugeiconsIcon icon={EyeIcon} size={15} strokeWidth={1.5} />
+						Preview
+					</DropdownMenuItem>
+				)}
+				{isFile && (
+					<DropdownMenuItem onClick={props.onDownload}>
+						<HugeiconsIcon
+							icon={CloudDownloadIcon}
+							size={15}
+							strokeWidth={1.5}
+						/>
+						Download
+					</DropdownMenuItem>
+				)}
+				{isFile && (
+					<DropdownMenuItem onClick={props.onRename}>
+						<HugeiconsIcon icon={PencilIcon} size={15} strokeWidth={1.5} />
+						Rename
+					</DropdownMenuItem>
+				)}
+				{isFile && (
+					<DropdownMenuItem onClick={props.onReplace}>
+						<HugeiconsIcon icon={FileEditIcon} size={15} strokeWidth={1.5} />
+						Replace
+					</DropdownMenuItem>
+				)}
+				{isFile && (
+					<DropdownMenuItem onClick={props.onShare}>
+						<HugeiconsIcon icon={CopyLinkIcon} size={15} strokeWidth={1.5} />
+						Copy URL
+					</DropdownMenuItem>
+				)}
+				{!isFile && (
+					<DropdownMenuItem onClick={props.onOpenFolder}>
+						<HugeiconsIcon icon={FolderOpenIcon} size={15} strokeWidth={1.5} />
+						Open
+					</DropdownMenuItem>
+				)}
+				<DropdownMenuSeparator />
+				<DropdownMenuItem onClick={props.onDelete} variant="destructive">
+					<HugeiconsIcon icon={DeleteThrowIcon} size={15} strokeWidth={1.5} />
+					Delete
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+function EntryRow(props: EntryActions & { maxSize: number }) {
+	const { item, maxSize } = props;
+	const isFolder = item.kind === "folder";
+
+	// Square-root scale: linear makes every ordinary file a 1px stub next to one
+	// outlier, which is exactly when you most want to read the small ones.
+	const weight =
+		!isFolder && maxSize > 0
+			? Math.max(2, Math.sqrt(item.size / maxSize) * 100)
+			: 0;
+
+	return (
+		<div className="entry-row" data-selected={props.selected}>
+			<div className="entry-check">
+				<input
+					aria-label={`Select ${item.name}`}
+					checked={props.selected}
+					onChange={(event) => props.onSelect(event.target.checked)}
+					type="checkbox"
+				/>
 			</div>
-			<div className="mt-4">
+
+			<FileGlyph item={item} size="md" />
+
+			<div className="entry-main">
 				<button
-					className="truncate object-card-title text-left"
-					onClick={
-						item.kind === "folder" ? props.onOpenFolder : props.onPreview
-					}
+					className="entry-name"
+					onClick={() => {
+						if (isFolder) {
+							props.onOpenFolder();
+							return;
+						}
+						if (item.isPreviewable) {
+							props.onPreview();
+						} else {
+							props.onDownload();
+						}
+					}}
+					title={item.name}
 					type="button"
 				>
 					{item.name}
 				</button>
-				<div className="mt-2 object-card-meta">
-					{item.kind === "folder"
-						? "Folder marker / prefix"
-						: `${formatBytes(item.size)} • ${formatTimestamp(item.lastModified)}`}
+				<span className="entry-meta">
+					{isFolder
+						? "prefix"
+						: `${formatBytes(item.size)} · ${formatTimestamp(item.lastModified)}`}
+				</span>
+			</div>
+
+			<span className="ext-label entry-hide-sm">
+				{isFolder ? "DIR" : extensionLabel(item) || "—"}
+			</span>
+			<span className="entry-cell entry-hide-sm">
+				{isFolder ? "—" : formatBytes(item.size)}
+			</span>
+			<span className="entry-cell entry-cell-muted entry-hide-sm">
+				{isFolder ? "—" : formatTimestamp(item.lastModified)}
+			</span>
+
+			<div className="entry-actions">
+				<EntryMenu {...props} />
+			</div>
+
+			{weight > 0 && (
+				<span
+					className="entry-weight"
+					style={{ width: `calc((100% - 24px) * ${weight / 100})` }}
+				/>
+			)}
+		</div>
+	);
+}
+
+function ObjectCard(props: EntryActions & { maxSize: number }) {
+	const { item, maxSize } = props;
+	const isFolder = item.kind === "folder";
+	const weight =
+		!isFolder && maxSize > 0
+			? Math.max(2, Math.sqrt(item.size / maxSize) * 100)
+			: 0;
+	return (
+		<div className="object-card" data-selected={props.selected}>
+			<div className="flex items-start justify-between gap-2">
+				<FileGlyph item={item} size="lg" />
+				<div className="flex items-center gap-1">
+					<input
+						aria-label={`Select ${item.name}`}
+						checked={props.selected}
+						onChange={(event) => props.onSelect(event.target.checked)}
+						type="checkbox"
+					/>
+					<EntryMenu {...props} />
 				</div>
 			</div>
-			<div className="mt-3 flex items-center gap-1">
-				{item.kind === "folder" ? (
-					<Button
-						onClick={props.onOpenFolder}
-						size="xs"
-						type="button"
-						variant="outline"
-					>
-						<HugeiconsIcon icon={FolderOpenIcon} strokeWidth={2} />
-						Open
-					</Button>
-				) : (
-					<Button
-						onClick={props.onDownload}
-						size="xs"
-						type="button"
-						variant="ghost"
-					>
-						<HugeiconsIcon icon={CloudDownloadIcon} strokeWidth={2} />
-						Download
-					</Button>
-				)}
-				<DropdownMenu>
-					<DropdownMenuTrigger
-						render={
-							<Button size="icon-xs" title="More actions" variant="ghost" />
-						}
-					>
-						<HugeiconsIcon icon={MoreVerticalIcon} strokeWidth={2} />
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" side="bottom">
-						{item.kind === "file" && item.isPreviewable && (
-							<DropdownMenuItem onClick={props.onPreview}>
-								<HugeiconsIcon icon={EyeIcon} strokeWidth={2} />
-								Preview
-							</DropdownMenuItem>
-						)}
-						{item.kind === "file" && (
-							<DropdownMenuItem onClick={props.onDownload}>
-								<HugeiconsIcon icon={CloudDownloadIcon} strokeWidth={2} />
-								Download
-							</DropdownMenuItem>
-						)}
-						{item.kind === "file" && (
-							<DropdownMenuItem onClick={props.onRename}>
-								<HugeiconsIcon icon={PencilIcon} strokeWidth={2} />
-								Rename
-							</DropdownMenuItem>
-						)}
-						{item.kind === "file" && (
-							<DropdownMenuItem onClick={props.onReplace}>
-								<HugeiconsIcon icon={FileEditIcon} strokeWidth={2} />
-								Replace
-							</DropdownMenuItem>
-						)}
-						{item.kind === "file" && (
-							<DropdownMenuItem onClick={props.onShare}>
-								<HugeiconsIcon icon={CopyLinkIcon} strokeWidth={2} />
-								Copy URL
-							</DropdownMenuItem>
-						)}
-						{item.kind === "folder" && (
-							<DropdownMenuItem onClick={props.onOpenFolder}>
-								<HugeiconsIcon icon={FolderOpenIcon} strokeWidth={2} />
-								Open
-							</DropdownMenuItem>
-						)}
-						<DropdownMenuSeparator />
-						<DropdownMenuItem onClick={props.onDelete} variant="destructive">
-							<HugeiconsIcon icon={DeleteThrowIcon} strokeWidth={2} />
-							Delete
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
+			<div className="min-w-0">
+				<button
+					className="w-full object-card-title text-left"
+					onClick={isFolder ? props.onOpenFolder : props.onPreview}
+					title={item.name}
+					type="button"
+				>
+					{item.name}
+				</button>
+				<div className="mt-1 object-card-meta">
+					{isFolder
+						? "prefix"
+						: `${formatBytes(item.size)} · ${formatTimestamp(item.lastModified)}`}
+				</div>
 			</div>
 		</div>
 	);

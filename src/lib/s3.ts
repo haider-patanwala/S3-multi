@@ -4,7 +4,6 @@ import {
 	DeleteObjectCommand,
 	DeleteObjectsCommand,
 	GetObjectCommand,
-	HeadBucketCommand,
 	HeadObjectCommand,
 	ListBucketsCommand,
 	ListObjectsV2Command,
@@ -70,24 +69,98 @@ export function resolveObjectContentType(key: string, rawContentType?: string) {
 	}
 }
 
-export function createClient(provider: ProviderConfig) {
-	return new S3Client({
-		region:
-			provider.type === "r2"
-				? provider.region || "auto"
-				: provider.region || DEFAULT_REGION,
-		endpoint: provider.endpoint || undefined,
-		forcePathStyle:
-			provider.type === "r2"
-				? true
-				: provider.type === "custom"
-					? Boolean(provider.forcePathStyle)
-					: false,
-		credentials: {
-			accessKeyId: provider.accessKeyId,
-			secretAccessKey: provider.secretAccessKey,
+/**
+ * `fetch` rejects with a bare `TypeError: Failed to fetch` for every network-layer
+ * failure — CORS preflight rejected, DNS miss, connection refused, bad endpoint —
+ * with no indication of which request died or why. That is unusable both for the
+ * operator and for anyone debugging this.
+ *
+ * One middleware at the point every command already routes through turns it into
+ * something actionable. It only rewrites the error; the request is untouched.
+ * Credentials are never included — hostname and path only.
+ */
+function attachFailureContext(client: S3Client) {
+	client.middlewareStack.add(
+		(next) => async (args) => {
+			try {
+				return await next(args);
+			} catch (error) {
+				const request = (args as { request?: unknown }).request as
+					| {
+							method?: string;
+							protocol?: string;
+							hostname?: string;
+							path?: string;
+					  }
+					| undefined;
+				/*
+				 * Discriminator: anything that actually reached the service carries
+				 * $metadata.httpStatusCode. Its absence means the request never got a
+				 * response — CORS rejection, DNS miss, refused connection, timeout.
+				 * Matching on error.message instead would be brittle: browsers say
+				 * "Failed to fetch", Node says "fetch failed" or "getaddrinfo ENOTFOUND".
+				 */
+				const reachedService =
+					typeof (error as { $metadata?: { httpStatusCode?: number } })
+						?.$metadata?.httpStatusCode === "number";
+
+				if (!reachedService && request?.hostname) {
+					const url = `${request.protocol ?? "https:"}//${request.hostname}${request.path ?? ""}`;
+					throw new Error(
+						`Blocked before reaching the server: ${request.method ?? "GET"} ${url}. ` +
+							"The browser refused it — almost always a CORS preflight rejection, " +
+							"otherwise an unreachable endpoint. Open DevTools → Network → the " +
+							"OPTIONS request to this URL to see which header or method the bucket " +
+							"policy is missing.",
+						{ cause: error },
+					);
+				}
+				throw error;
+			}
 		},
-	});
+		{ step: "finalizeRequest", name: "describeFetchFailure" },
+	);
+	return client;
+}
+
+export function createClient(provider: ProviderConfig) {
+	return attachFailureContext(
+		new S3Client({
+			region:
+				provider.type === "r2"
+					? provider.region || "auto"
+					: provider.region || DEFAULT_REGION,
+			endpoint: provider.endpoint || undefined,
+			forcePathStyle:
+				provider.type === "r2"
+					? true
+					: provider.type === "custom"
+						? Boolean(provider.forcePathStyle)
+						: false,
+			credentials: {
+				accessKeyId: provider.accessKeyId,
+				secretAccessKey: provider.secretAccessKey,
+			},
+			/*
+			 * Do NOT add `requestHandler: { cache: "no-store" }` here. It looks like a
+			 * harmless freshness fix, but per the Fetch spec the browser then appends
+			 * `Pragma: no-cache` and `Cache-Control: no-cache` REQUEST headers. Neither
+			 * is CORS-safelisted, so both land in the preflight's
+			 * Access-Control-Request-Headers — and any bucket whose CORS policy
+			 * enumerates AllowedHeaders instead of using "*" starts failing every
+			 * request with an opaque "Failed to fetch".
+			 *
+			 * It is also unnecessary for correctness: RFC 9111 §4.4 requires a cache to
+			 * invalidate its stored response for a URI after a successful unsafe method,
+			 * so the PutObject in putObjectText already evicts the stale GET before the
+			 * read-back runs.
+			 *
+			 * ponytail: if stale *listings* ever show up, bust them with a signed
+			 * cache-busting query param added in a middleware (changes the cache key
+			 * without touching headers), not with a cache mode.
+			 */
+		}),
+	);
 }
 
 export function buildObjectUrl(
@@ -120,8 +193,17 @@ export async function testConnection(
 ): Promise<ProviderTestResult> {
 	const client = createClient(provider);
 	if (provider.defaultBucket) {
+		/*
+		 * Probe with the operation the browse view actually depends on, not
+		 * HeadBucket. A green HeadBucket proves nothing useful — bucket-scoped
+		 * tokens and per-operation CORS rendering mean it can pass while listing
+		 * still fails, and (as here) fail while listing works.
+		 */
 		await client.send(
-			new HeadBucketCommand({ Bucket: provider.defaultBucket }),
+			new ListObjectsV2Command({
+				Bucket: provider.defaultBucket,
+				MaxKeys: 1,
+			}),
 		);
 		return {
 			buckets: [provider.defaultBucket],
@@ -146,16 +228,22 @@ export async function listBuckets(provider: ProviderConfig) {
 			return [provider.defaultBucket, ...buckets];
 		}
 		return buckets;
-	} catch (error) {
-		if (
-			error instanceof Error &&
-			/CORS|Failed to fetch|preflight|Access-Control-Allow-Origin/i.test(
-				error.message,
-			)
-		) {
-			return provider.defaultBucket ? [provider.defaultBucket] : [];
-		}
-		throw error;
+	} catch {
+		/*
+		 * Account-level ListBuckets is best-effort from a browser and its failure says
+		 * nothing about whether a given bucket is usable: R2/S3 CORS is per-bucket, so
+		 * the preflight on the bare account endpoint has no policy to match and dies,
+		 * and bucket-scoped tokens get a 403. Fall back to the buckets we already know
+		 * about rather than failing the whole browse view.
+		 *
+		 * This used to match on error.message (/CORS|Failed to fetch|.../) — which
+		 * silently stopped matching the moment describeFetchFailure started rewriting
+		 * those messages, never covered 403, and rethrew whenever no default bucket
+		 * was set, leaving the operator with an empty picker and no way in.
+		 */
+		return [
+			...new Set([provider.defaultBucket, ...(provider.buckets ?? [])]),
+		].filter(Boolean) as string[];
 	}
 }
 
@@ -351,6 +439,18 @@ export async function previewObject(
 	};
 }
 
+export async function getObjectText(
+	provider: ProviderConfig,
+	bucket: string,
+	key: string,
+) {
+	const client = createClient(provider);
+	const response = await client.send(
+		new GetObjectCommand({ Bucket: bucket, Key: key }),
+	);
+	return (await response.Body?.transformToString()) ?? "";
+}
+
 export async function putObjectText(
 	provider: ProviderConfig,
 	bucket: string,
@@ -359,14 +459,36 @@ export async function putObjectText(
 	contentType?: string,
 ) {
 	const client = createClient(provider);
+	// A PutObject overwrite replaces *all* metadata, so carry the existing
+	// headers forward instead of silently stripping them. ContentEncoding is
+	// deliberately dropped: the browser already decoded the body on read.
+	const existing = await headObject(provider, bucket, key).catch(
+		() => undefined,
+	);
 	await client.send(
 		new PutObjectCommand({
 			Bucket: bucket,
 			Key: key,
 			Body: text,
-			ContentType: contentType || resolveObjectContentType(key),
+			ContentType:
+				contentType || existing?.ContentType || resolveObjectContentType(key),
+			CacheControl: existing?.CacheControl,
+			ContentDisposition: existing?.ContentDisposition,
+			ContentLanguage: existing?.ContentLanguage,
+			Metadata: existing?.Metadata,
 		}),
 	);
+
+	// Read-after-write: a 200 from PutObject is not proof the bytes a reader
+	// gets back are the ones we sent. This catches silent write-through
+	// failures, stale caches, and permission oddities at the one place that
+	// matters — before the UI claims the save landed.
+	const written = await getObjectText(provider, bucket, key);
+	if (written !== text) {
+		throw new Error(
+			"Save did not stick: the object read back different content. Check write permissions on the bucket and whether a CDN or proxy sits in front of this endpoint.",
+		);
+	}
 }
 
 export async function downloadObject(

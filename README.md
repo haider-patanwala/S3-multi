@@ -121,6 +121,7 @@ The database name in the current implementation is `s3-multi-control-room`.
 ## Documentation
 
 - End-user instructions: [USER_GUIDE.md](./USER_GUIDE.md)
+- Technical wiki (LLM-first, densely cross-linked): [docs/index.md](./docs/index.md) — start there for architecture, subsystems, caching behaviour, and the failure-mode catalogue.
 
 ## Project Structure
 

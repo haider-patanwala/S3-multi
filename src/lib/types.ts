@@ -14,6 +14,8 @@ export type ProviderConfig = {
 	cloudFrontDistributionId?: string;
 	cloudflareZoneId?: string;
 	cloudflareApiToken?: string;
+	/** Public CDN origin serving this bucket, e.g. https://cdn.example.com. Enables single-file purges. */
+	publicBaseUrl?: string;
 	createdAt: number;
 	lastUsedAt?: number;
 };

@@ -199,51 +199,36 @@ function ProvidersPage() {
 		},
 	});
 
-	const profileStats = useMemo(
-		() => [
-			{
-				label: "Vault entries",
-				value: providers.length,
-				subtle: "Stored locally in IndexedDB",
-			},
-			{
-				label: "Active",
-				value:
-					providers.find(
-						(provider) => provider.id === activeProviderIdQuery.data,
-					)?.name ?? "None",
-				subtle: "Used as the browse default",
-			},
-		],
+	const activeProviderName = useMemo(
+		() =>
+			providers.find((provider) => provider.id === activeProviderIdQuery.data)
+				?.name ?? "None",
 		[providers, activeProviderIdQuery.data],
 	);
 
 	return (
-		<div className="space-y-6">
-			<section className="control-panel page-header px-5 py-5 lg:px-6 lg:py-6">
-				<div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-					<div>
-						<div className="section-label">Providers</div>
-						<h2 className="page-title mt-2">Local credential vault</h2>
-						<p className="page-copy mt-3 max-w-3xl">
-							Create AWS S3, Cloudflare R2, or custom S3 profiles. Secrets are
-							encrypted before being written to IndexedDB, and they never leave
-							the browser.
-						</p>
-					</div>
-					<div className="page-stat-grid">
-						{profileStats.map((stat) => (
-							<div className="metric-card" key={stat.label}>
-								<div className="metric-label">{stat.label}</div>
-								<div className="metric-value text-2xl">{stat.value}</div>
-								<div className="metric-subtle">{stat.subtle}</div>
-							</div>
-						))}
-					</div>
+		<div className="space-y-4">
+			<div className="stat-strip">
+				<div className="stat-strip-group">
+					<span className="stat-strip-item">
+						<span className="stat-strip-value">{providers.length}</span>
+						{providers.length === 1 ? "profile" : "profiles"}
+					</span>
+					<span className="stat-strip-item">
+						active
+						<span
+							className={cn(
+								"stat-strip-value",
+								activeProviderName === "None" && "stat-strip-value-quiet",
+							)}
+						>
+							{activeProviderName}
+						</span>
+					</span>
 				</div>
-			</section>
+			</div>
 
-			<div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+			<div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
 				<section className="control-panel px-5 py-5">
 					<div className="panel-header">
 						<div className="section-label">Stored profiles</div>
@@ -412,6 +397,10 @@ function ProvidersPage() {
 								type="password"
 								value={form.secretAccessKey}
 							/>
+							<span className="field-note">
+								AES-GCM encrypted in IndexedDB. Never sent anywhere but your
+								storage provider.
+							</span>
 						</label>
 						<label className="field">
 							<span>Region</span>

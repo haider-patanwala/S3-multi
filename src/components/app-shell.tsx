@@ -1,3 +1,13 @@
+import {
+	ArrowDataTransferVerticalIcon,
+	CloudServerIcon,
+	Folder02Icon,
+	HelpCircleIcon,
+	Moon02Icon,
+	SidebarLeft01Icon,
+	Sun01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
@@ -6,26 +16,22 @@ import {
 	providerQueryOptions,
 	transferQueryOptions,
 } from "../lib/query-options";
+import { applyTheme, readTheme, type Theme } from "../lib/theme";
 import { cn, formatBytes, shortProviderLabel } from "../lib/utils";
 
 const navItems = [
-	{
-		to: "/browse",
-		label: "Browser",
-	},
-	{
-		to: "/providers",
-		label: "Providers",
-	},
-	{
-		to: "/transfers",
-		label: "Transfers",
-	},
-	{
-		to: "/help",
-		label: "Help",
-	},
+	{ to: "/browse", label: "Browser", icon: Folder02Icon },
+	{ to: "/providers", label: "Providers", icon: CloudServerIcon },
+	{ to: "/transfers", label: "Transfers", icon: ArrowDataTransferVerticalIcon },
+	{ to: "/help", label: "Help", icon: HelpCircleIcon },
 ] as const;
+
+const pageTitles: [prefix: string, title: string][] = [
+	["/browse", "Browser"],
+	["/providers", "Providers"],
+	["/transfers", "Transfers"],
+	["/help", "Help"],
+];
 
 export function AppShell() {
 	const providersQuery = useQuery(providerQueryOptions);
@@ -35,6 +41,7 @@ export function AppShell() {
 		select: (state) => state.location.pathname,
 	});
 	const [collapsed, setCollapsed] = useState(false);
+	const [theme, setTheme] = useState<Theme>(readTheme);
 
 	const providers = providersQuery.data ?? [];
 	const activeProvider = providers.find(
@@ -48,6 +55,16 @@ export function AppShell() {
 		(total, transfer) => total + (transfer.totalBytes ?? 0),
 		0,
 	);
+
+	const title =
+		pageTitles.find(([prefix]) => pathname.startsWith(prefix))?.[1] ??
+		"Overview";
+
+	function toggleTheme() {
+		const next: Theme = theme === "dark" ? "light" : "dark";
+		setTheme(next);
+		applyTheme(next);
+	}
 
 	return (
 		<div className="workspace-frame min-h-screen overflow-x-hidden">
@@ -66,24 +83,27 @@ export function AppShell() {
 					<div className="shell-brand">
 						<div className="shell-brand-row">
 							<div className="shell-mark">S3</div>
-							<button
-								className="sidebar-toggle"
-								onClick={() => setCollapsed(!collapsed)}
-								title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-								type="button"
-							>
-								{collapsed ? "\u25B6" : "\u25C0"}
-							</button>
+							{!collapsed && (
+								<button
+									className="sidebar-toggle"
+									onClick={() => setCollapsed(true)}
+									title="Collapse sidebar"
+									type="button"
+								>
+									<HugeiconsIcon
+										icon={SidebarLeft01Icon}
+										size={16}
+										strokeWidth={1.5}
+									/>
+								</button>
+							)}
 						</div>
 						{!collapsed && (
-							<>
-								<h1 className="shell-title">Multi-cloud storage dashboard</h1>
-								<span className="shell-badge">
-									{activeProvider
-										? shortProviderLabel(activeProvider.type)
-										: "No provider"}
-								</span>
-							</>
+							<span className="shell-badge">
+								{activeProvider
+									? shortProviderLabel(activeProvider.type)
+									: "No provider"}
+							</span>
 						)}
 					</div>
 
@@ -98,9 +118,10 @@ export function AppShell() {
 								title={collapsed ? item.label : undefined}
 								to={item.to}
 							>
-								<span className="nav-chip-label">
-									{collapsed ? item.label[0] : item.label}
-								</span>
+								<HugeiconsIcon icon={item.icon} size={16} strokeWidth={1.5} />
+								{!collapsed && (
+									<span className="nav-chip-label">{item.label}</span>
+								)}
 							</Link>
 						))}
 					</nav>
@@ -116,41 +137,45 @@ export function AppShell() {
 				<div className="shell-stage min-w-0">
 					<header className="overview-panel">
 						<div className="overview-intro">
-							<div className="eyebrow">Dashboard</div>
-							<h2 className="overview-title">
-								{pathname.startsWith("/browse")
-									? "Object browser"
-									: pathname.startsWith("/providers")
-										? "Provider vault"
-										: pathname.startsWith("/transfers")
-											? "Transfer queue"
-											: pathname.startsWith("/help")
-												? "Getting started"
-												: "Overview"}
-							</h2>
+							{collapsed && (
+								<button
+									className="sidebar-toggle"
+									onClick={() => setCollapsed(false)}
+									title="Expand sidebar"
+									type="button"
+								>
+									<HugeiconsIcon
+										icon={SidebarLeft01Icon}
+										size={16}
+										strokeWidth={1.5}
+									/>
+								</button>
+							)}
+							<h2 className="overview-title">{title}</h2>
 						</div>
 
-						{pathname.startsWith("/transfers") && (
-							<div className="header-meta overview-stats">
+						<div className="header-meta">
+							{runningTransfers > 0 && (
 								<div className="header-stat">
-									<span className="metric-label">Transfers</span>
 									<span className="header-stat-value">{runningTransfers}</span>
-									<span className="header-stat-note">Active</span>
-								</div>
-								<div className="header-stat">
-									<span className="metric-label">Volume</span>
-									<span className="header-stat-value">
-										{formatBytes(queuedBytes)}
+									<span className="header-stat-note">
+										active · {formatBytes(queuedBytes)}
 									</span>
-									<span className="header-stat-note">Total tracked</span>
 								</div>
-								<div className="header-stat">
-									<span className="metric-label">Providers</span>
-									<span className="header-stat-value">{providers.length}</span>
-									<span className="header-stat-note">In vault</span>
-								</div>
-							</div>
-						)}
+							)}
+							<button
+								className="icon-button"
+								onClick={toggleTheme}
+								title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+								type="button"
+							>
+								<HugeiconsIcon
+									icon={theme === "dark" ? Sun01Icon : Moon02Icon}
+									size={16}
+									strokeWidth={1.5}
+								/>
+							</button>
+						</div>
 					</header>
 
 					<section className="shell-main min-w-0">
