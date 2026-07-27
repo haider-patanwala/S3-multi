@@ -136,7 +136,10 @@ out-of-form fields there or saving connection settings will erase them.
 - Every mutation reports through `setStatusMessage` (success) or `setErrorMessage`
   (failure). No silent catches — see [failure-modes](09-failure-modes.md).
 - Deliberate shortcuts are marked with a `ponytail:` comment naming the ceiling and
-  the upgrade path. Grep for them before assuming something is an oversight.
+  the upgrade path, so a simplification reads as intent rather than oversight.
+  Grep before assuming something is an oversight — though the tree currently has
+  none, the last one having prescribed a fix that was tried and rejected
+  ([cache-control](11-cache-control.md)).
 - Query keys live in `src/lib/query-options.ts`, never inlined in a component.
 - Blob URLs from `previewObject` must be revoked on every exit path.
 
