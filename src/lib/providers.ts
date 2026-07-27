@@ -35,6 +35,7 @@ async function toConfig(record: ProviderRecord): Promise<ProviderConfig> {
 			? await decryptSecret(record.cloudflareApiTokenEncrypted)
 			: undefined,
 		publicBaseUrl: record.publicBaseUrl,
+		defaultCacheControl: record.defaultCacheControl,
 		createdAt: record.createdAt,
 		lastUsedAt: record.lastUsedAt,
 	};
@@ -66,6 +67,7 @@ export async function saveProvider(draft: ProviderDraft) {
 			draft.cloudFrontDistributionId?.trim() || undefined,
 		cloudflareZoneId: draft.cloudflareZoneId?.trim() || undefined,
 		publicBaseUrl: draft.publicBaseUrl?.trim().replace(/\/+$/, "") || undefined,
+		defaultCacheControl: draft.defaultCacheControl?.trim() || undefined,
 		createdAt,
 		lastUsedAt: Date.now(),
 		accessKeyIdEncrypted: await encryptSecret(draft.accessKeyId.trim()),

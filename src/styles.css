@@ -1405,19 +1405,35 @@
 
 /* ── Preview & editor ─────────────────────────────────────────────────── */
 
+/*
+ * Below the shadcn Dialog layer (z-50), on purpose: the save and purge dialogs
+ * are opened FROM this modal, so they have to stack on top of it. The toast
+ * stack (60) and status banner (70) stay above it too — a save result that
+ * renders behind the modal that triggered it is a result nobody sees.
+ */
 .preview-modal {
 	position: fixed;
 	inset: 0;
-	z-index: 80;
+	z-index: 40;
 	display: grid;
 	place-items: center;
 	padding: 24px;
-	background: color-mix(in srgb, var(--paper-0) 78%, transparent);
-	backdrop-filter: blur(6px);
 	animation: fade-in 140ms ease both;
 }
 
+/* A real button so click-outside-to-close is reachable by keyboard and screen
+   readers, instead of a click handler bolted onto the backdrop div. */
+.preview-backdrop {
+	position: absolute;
+	inset: 0;
+	cursor: default;
+	background: color-mix(in srgb, var(--paper-0) 78%, transparent);
+	border: none;
+	backdrop-filter: blur(6px);
+}
+
 .preview-frame {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	width: min(92vw, 1000px);
@@ -1448,6 +1464,167 @@
 	background: var(--paper-inset);
 	border: 1px solid var(--rule-2);
 	border-radius: var(--r-sm);
+}
+
+.preview-pane {
+	max-height: 62vh;
+	overflow: auto;
+	background: var(--paper-inset);
+	border: 1px solid var(--rule-2);
+	border-radius: var(--r-sm);
+}
+
+.preview-pane > .preview-code {
+	border: none;
+	border-radius: 0;
+}
+
+/* White, not --paper-*: the document brings its own colours and a dark page
+   behind a light stylesheet is worse than an honest blank sheet. */
+.preview-html-frame {
+	width: 100%;
+	height: 62vh;
+	background: #fff;
+	border: 1px solid var(--rule-2);
+	border-radius: var(--r-sm);
+}
+
+/* Rendered Markdown. Scoped tags only — the HTML is DOMPurify output, so it
+   can contain anything the source file did. */
+.markdown-body {
+	padding: 16px 18px;
+	font-size: 0.875rem;
+	line-height: 1.7;
+	color: var(--ink-2);
+	overflow-wrap: anywhere;
+}
+
+.markdown-body > :first-child {
+	margin-top: 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+	margin: 1.4em 0 0.5em;
+	font-weight: 600;
+	line-height: 1.3;
+	color: var(--ink-1);
+	letter-spacing: -0.01em;
+}
+
+.markdown-body h1 {
+	font-size: 1.4rem;
+}
+.markdown-body h2 {
+	font-size: 1.15rem;
+}
+.markdown-body h3 {
+	font-size: 1rem;
+}
+
+.markdown-body h1,
+.markdown-body h2 {
+	padding-bottom: 0.3em;
+	border-bottom: 1px solid var(--rule-2);
+}
+
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body blockquote,
+.markdown-body table,
+.markdown-body pre {
+	margin: 0.75em 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+	padding-left: 1.4em;
+}
+
+.markdown-body ul {
+	list-style: disc;
+}
+
+.markdown-body ol {
+	list-style: decimal;
+}
+
+.markdown-body li {
+	margin: 0.25em 0;
+}
+
+.markdown-body a {
+	color: var(--tape);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.markdown-body code {
+	padding: 0.15em 0.35em;
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+	background: var(--paper-3);
+	border: 1px solid var(--rule-2);
+	border-radius: 3px;
+}
+
+.markdown-body pre {
+	padding: 12px;
+	overflow: auto;
+	background: var(--paper-3);
+	border: 1px solid var(--rule-2);
+	border-radius: var(--r-sm);
+}
+
+.markdown-body pre code {
+	padding: 0;
+	font-size: 0.8125rem;
+	background: none;
+	border: none;
+}
+
+.markdown-body blockquote {
+	padding-left: 12px;
+	color: var(--ink-3);
+	border-left: 3px solid var(--rule-3);
+}
+
+.markdown-body hr {
+	margin: 1.5em 0;
+	border: none;
+	border-top: 1px solid var(--rule-2);
+}
+
+.markdown-body table {
+	width: 100%;
+	font-size: 0.8125rem;
+	border-collapse: collapse;
+}
+
+.markdown-body th,
+.markdown-body td {
+	padding: 6px 10px;
+	text-align: left;
+	border: 1px solid var(--rule-2);
+}
+
+.markdown-body th {
+	font-weight: 600;
+	color: var(--ink-1);
+	background: var(--paper-3);
+}
+
+.markdown-body img {
+	max-width: 100%;
+	border-radius: var(--r-sm);
+}
+
+.markdown-body strong {
+	font-weight: 600;
+	color: var(--ink-1);
 }
 
 /* ── Help guide ───────────────────────────────────────────────────────── */

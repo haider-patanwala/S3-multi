@@ -20,10 +20,30 @@ Historically three stacked defects; all fixed. If it recurs, check in this order
 2. **Read-back.** `putObjectText` reads the object back and throws
    `"Save did not stick: …"` on mismatch. Seeing that message means the write was
    accepted but a reader gets different bytes: check bucket write permissions and
-   whether anything sits in front of the endpoint.
+   whether anything sits in front of the endpoint. **Before believing it, confirm
+   the write really failed** — see the next entry.
 3. **Query cache.** If the listing shows a stale size but reopening the file
    shows the new content, a mutation forgot to invalidate. See
    [caching-layers](08-caching-layers.md).
+
+### Every save says "Save did not stick" but the file list shows the new size
+
+The write landed; the **read-back** is stale. This was a real bug: the browser
+served `putObjectText`'s verification `GET` from its HTTP cache, so the new text
+was compared against the pre-write body.
+
+Tell-tale: the object list shows the new byte count and modified time at the same
+moment the save reports failure. Reopening the file also shows the old content.
+
+Fixed by `ResponseCacheControl: "no-cache"` on every content/metadata read. If it
+recurs, a new read path was added without it — see
+[cache-control](11-cache-control.md). Do not "fix" it with a fetch `cache` mode
+(invariant 2), and do not add a cache-busting param globally: that breaks
+`ListObjectsV2` silently.
+
+Ground truth when unsure whether a write landed: check the **object list's byte
+count**, or re-fetch with `{ cache: "reload" }` in the console. Both bypass the
+path that lies.
 
 ### Save wipes an object's Cache-Control or custom metadata
 
@@ -187,7 +207,45 @@ Clearing site data destroys the IndexedDB vault, including the non-extractable
 `saveProvider` is a full replace, not a patch. Always spread the existing provider.
 See [provider-vault](02-provider-vault.md).
 
+Hit for real: the Providers page rebuilt the provider from its own form via
+`toDraft`, which knew nothing about the CDN fields set in `/browse`'s purge dialog.
+Saving connection settings silently erased the CloudFront/Cloudflare/public-URL
+config. Fixed by carrying them through `FormState.cdn` untouched. Any form that
+edits a *subset* of a record must round-trip the rest.
+
+### A new provider field saves "successfully" but is gone on reload
+
+`saveProvider` builds `ProviderRecord` field by field. A field missing there is
+dropped on write, and one missing from `toConfig` is dropped on read — in both
+cases the UI still reports success, because the save genuinely succeeded for every
+field it knew about.
+
+Hit for real by `defaultCacheControl`. The 4-file recipe in
+[development](10-development.md) exists precisely for this and was still missed;
+the only reliable check is reading the record back out of IndexedDB.
+
+## UI / overlays
+
+### A dialog opened from the preview modal is invisible
+
+Stacking order. The preview modal is `z-40` *below* the shadcn Dialog layer
+(`z-50`) on purpose — the save and purge dialogs are opened from inside it. The
+toast stack (60) and status banner (70) sit above it too, so a save result is not
+hidden behind the modal that produced it. Raising `.preview-modal` above 50
+re-breaks all of this.
+
+Do not reach for a native `<dialog>` + `showModal()` here either: it joins the top
+layer, which beats every z-index and puts the preview *above* dialogs opened from
+it. That was tried and reverted; `.preview-backdrop` (a real `<button>`) plus a
+`keydown` effect covers click-outside and Escape without the top layer.
+
+### Dialog content overflows its own box
+
+`DialogContent` is a grid, and a grid item defaults to `min-width: auto`, so a wide
+`<pre>` stretches the track past the dialog instead of scrolling inside it. Add
+`min-w-0` to the flex column wrapping it.
+
 ## Relations
 
-- `troubleshoots` → [text-editing](06-text-editing.md), [cdn-purge](07-cdn-purge.md), [s3-client](03-s3-client.md), [browsing](04-browsing.md), [transfers](05-transfers.md), [provider-vault](02-provider-vault.md)
+- `troubleshoots` → [text-editing](06-text-editing.md), [cdn-purge](07-cdn-purge.md), [s3-client](03-s3-client.md), [browsing](04-browsing.md), [transfers](05-transfers.md), [provider-vault](02-provider-vault.md), [cache-control](11-cache-control.md)
 - `depends-on` → [caching-layers](08-caching-layers.md)

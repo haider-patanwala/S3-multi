@@ -16,6 +16,8 @@ export type ProviderConfig = {
 	cloudflareApiToken?: string;
 	/** Public CDN origin serving this bucket, e.g. https://cdn.example.com. Enables single-file purges. */
 	publicBaseUrl?: string;
+	/** Cache-Control written on uploads and offered when saving. Empty falls back to a per-extension suggestion. */
+	defaultCacheControl?: string;
 	createdAt: number;
 	lastUsedAt?: number;
 };
@@ -88,4 +90,6 @@ export type ObjectPreview = {
 	blobUrl: string;
 	contentType: string;
 	fileName: string;
+	/** The object's stored Cache-Control, so the save dialog can show what is really set. */
+	cacheControl?: string;
 };

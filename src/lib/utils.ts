@@ -85,6 +85,9 @@ const previewableExtensions = new Set([
 	"yaml",
 	"log",
 	"xml",
+	"html",
+	"htm",
+	"css",
 ]);
 
 export function extensionForKey(key: string) {

@@ -11,6 +11,7 @@ import {
 	S3Client,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import { suggestCacheControl } from "./cache-control";
 import type {
 	ObjectEntry,
 	ObjectPreview,
@@ -150,14 +151,9 @@ export function createClient(provider: ProviderConfig) {
 			 * enumerates AllowedHeaders instead of using "*" starts failing every
 			 * request with an opaque "Failed to fetch".
 			 *
-			 * It is also unnecessary for correctness: RFC 9111 §4.4 requires a cache to
-			 * invalidate its stored response for a URI after a successful unsafe method,
-			 * so the PutObject in putObjectText already evicts the stale GET before the
-			 * read-back runs.
-			 *
-			 * ponytail: if stale *listings* ever show up, bust them with a signed
-			 * cache-busting query param added in a middleware (changes the cache key
-			 * without touching headers), not with a cache mode.
+			 * Freshness is handled instead by ResponseCacheControl on the reads that
+			 * need it — a real, signed S3 query parameter, so it changes the cache
+			 * key without adding anything to the CORS preflight.
 			 */
 		}),
 	);
@@ -359,13 +355,36 @@ export async function renameKey(
 	await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: fromKey }));
 }
 
+/**
+ * `no-cache` on reads is load-bearing, not defensive. The SDK tags each
+ * operation with its own `x-id`, so a write goes to `…/key?x-id=PutObject`
+ * while a read goes to `…/key?x-id=GetObject` — different cache keys, which
+ * means the RFC 9111 §4.4 "an unsafe method invalidates the stored response"
+ * rule never fires between them. Without this, putObjectText's read-after-write
+ * compares the new text against the browser's cached pre-write body and reports
+ * "Save did not stick" on a save that actually landed, and the editor reopens
+ * the pre-save copy.
+ *
+ * It is a real, signed S3 query parameter (`response-cache-control`), so unlike
+ * a `cache: "no-store"` request mode it adds nothing to the CORS preflight. It
+ * only overrides the Cache-Control on *this response* — the object's own stored
+ * Cache-Control, and therefore CDN edge caching, is untouched.
+ */
+const NO_CACHE = "no-cache";
+
 export async function headObject(
 	provider: ProviderConfig,
 	bucket: string,
 	key: string,
 ) {
 	const client = createClient(provider);
-	return client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+	return client.send(
+		new HeadObjectCommand({
+			Bucket: bucket,
+			Key: key,
+			ResponseCacheControl: NO_CACHE,
+		}),
+	);
 }
 
 async function bodyToBlob(
@@ -425,7 +444,13 @@ export async function previewObject(
 	const metadata = await headObject(provider, bucket, key);
 	const client = createClient(provider);
 	const response = await client.send(
-		new GetObjectCommand({ Bucket: bucket, Key: key }),
+		// Same reason as getObjectText: without it the editor reopens the copy the
+		// browser cached before the last save.
+		new GetObjectCommand({
+			Bucket: bucket,
+			Key: key,
+			ResponseCacheControl: NO_CACHE,
+		}),
 	);
 	const contentType = resolveObjectContentType(
 		key,
@@ -436,6 +461,7 @@ export async function previewObject(
 		blobUrl: URL.createObjectURL(blob),
 		contentType,
 		fileName: key.split("/").pop() ?? key,
+		cacheControl: metadata.CacheControl,
 	};
 }
 
@@ -446,7 +472,11 @@ export async function getObjectText(
 ) {
 	const client = createClient(provider);
 	const response = await client.send(
-		new GetObjectCommand({ Bucket: bucket, Key: key }),
+		new GetObjectCommand({
+			Bucket: bucket,
+			Key: key,
+			ResponseCacheControl: NO_CACHE,
+		}),
 	);
 	return (await response.Body?.transformToString()) ?? "";
 }
@@ -457,6 +487,7 @@ export async function putObjectText(
 	key: string,
 	text: string,
 	contentType?: string,
+	cacheControl?: string,
 ) {
 	const client = createClient(provider);
 	// A PutObject overwrite replaces *all* metadata, so carry the existing
@@ -472,7 +503,9 @@ export async function putObjectText(
 			Body: text,
 			ContentType:
 				contentType || existing?.ContentType || resolveObjectContentType(key),
-			CacheControl: existing?.CacheControl,
+			// An explicit value wins so the save dialog can change caching; falling
+			// back to the existing header keeps an untouched object untouched.
+			CacheControl: cacheControl || existing?.CacheControl,
 			ContentDisposition: existing?.ContentDisposition,
 			ContentLanguage: existing?.ContentLanguage,
 			Metadata: existing?.Metadata,
@@ -500,7 +533,13 @@ export async function downloadObject(
 	const metadata = await headObject(provider, bucket, key);
 	const client = createClient(provider);
 	const response = await client.send(
-		new GetObjectCommand({ Bucket: bucket, Key: key }),
+		// A download must be the object as it is now, not the copy the browser
+		// kept from the last preview.
+		new GetObjectCommand({
+			Bucket: bucket,
+			Key: key,
+			ResponseCacheControl: NO_CACHE,
+		}),
 	);
 	const total = metadata.ContentLength;
 	const contentType = resolveObjectContentType(
@@ -527,6 +566,7 @@ export async function uploadObject(
 	file: File,
 	contentTypeOverride?: string,
 	onProgress?: (loaded: number, total?: number) => void,
+	cacheControl?: string,
 ) {
 	const client = createClient(provider);
 	const uploader = new Upload({
@@ -537,6 +577,10 @@ export async function uploadObject(
 			Body: file,
 			ContentType:
 				contentTypeOverride || file.type || resolveObjectContentType(key),
+			// Without this an uploaded object has no Cache-Control at all, and the
+			// CDN falls back to re-fetching from the bucket on its own schedule —
+			// which is what shows up on the bill.
+			CacheControl: cacheControl || suggestCacheControl(key),
 		},
 		partSize: 8 * 1024 * 1024,
 		queueSize: 3,

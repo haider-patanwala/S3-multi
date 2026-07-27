@@ -59,6 +59,12 @@ import {
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import {
+	CACHE_PRESETS,
+	describeCacheControl,
+	isCached,
+	suggestCacheControl,
+} from "../lib/cache-control";
+import {
 	buildPurgeCommand,
 	canPurge,
 	type PurgeCommand,
@@ -77,6 +83,14 @@ import {
 	recentBucketQueryOptions,
 	transferQueryOptions,
 } from "../lib/query-options";
+import {
+	canFormat,
+	detectTextLang,
+	formatText,
+	formatTextOrKeep,
+	renderMarkdown,
+	type TextLang,
+} from "../lib/richtext";
 import {
 	buildObjectUrl,
 	createFolder,
@@ -163,10 +177,46 @@ function previewRenderer(
 	}
 	return (
 		<iframe
-			className="h-[70vh] w-[80vw] rounded-lg bg-[color:var(--panel-strong)]"
+			className="h-[70vh] w-full rounded-lg bg-[color:var(--panel-strong)]"
 			src={preview.blobUrl}
 			title={preview.fileName}
 		/>
+	);
+}
+
+/**
+ * The pretty side of a text file: Markdown and HTML render, everything else
+ * shows the pretty-printed source. `text` is the live editor buffer, so the
+ * rendered view follows edits without a save round-trip. Each branch owns its
+ * own frame — the iframe brings its own border and scrolling, so wrapping it
+ * in .preview-pane doubles both.
+ */
+function RichTextViewer({ text, lang }: { text: string; lang: TextLang }) {
+	if (lang === "markdown") {
+		return (
+			<div className="preview-pane">
+				<div
+					className="markdown-body"
+					// biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by DOMPurify in renderMarkdown
+					dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
+				/>
+			</div>
+		);
+	}
+	if (lang === "html") {
+		return (
+			<iframe
+				className="preview-html-frame"
+				sandbox=""
+				srcDoc={text}
+				title="HTML preview"
+			/>
+		);
+	}
+	return (
+		<div className="preview-pane">
+			<pre className="preview-code">{text}</pre>
+		</div>
 	);
 }
 
@@ -226,6 +276,9 @@ function BrowsePage() {
 	const [previewKey, setPreviewKey] = useState<string | null>(null);
 	const [textPreview, setTextPreview] = useState<string | null>(null);
 	const [editText, setEditText] = useState("");
+	const [editMode, setEditMode] = useState(false);
+	const [saveOpen, setSaveOpen] = useState(false);
+	const [saveCacheControl, setSaveCacheControl] = useState("");
 	const [purgeOpen, setPurgeOpen] = useState(false);
 	const [cfDistId, setCfDistId] = useState("");
 	const [cfZoneId, setCfZoneId] = useState("");
@@ -244,6 +297,42 @@ function BrowsePage() {
 		(text: string) => setStatus({ text, error: true }),
 		[],
 	);
+	const previewLang: TextLang =
+		preview && previewKey
+			? detectTextLang(previewKey, preview.contentType)
+			: "text";
+	// One closer for the button, Escape and the backdrop — the modal used to
+	// only close via its own button, unlike every other overlay in the app.
+	const closePreview = useCallback(() => {
+		// The blob URL is revoked by the effect that watches `preview`.
+		setPreview(null);
+		setPreviewKey(null);
+		setTextPreview(null);
+		setEditText("");
+		setEditMode(false);
+	}, []);
+	// Only worth showing when something can actually be stale: either the object
+	// is cached now, or this save is about to make it cacheable.
+	const savePurgeCommand = useMemo(() => {
+		if (!(provider && previewKey)) {
+			return undefined;
+		}
+		if (!(isCached(preview?.cacheControl) || isCached(saveCacheControl))) {
+			return undefined;
+		}
+		return buildPurgeCommand(provider, [previewKey]);
+	}, [provider, previewKey, preview?.cacheControl, saveCacheControl]);
+	const applyFormat = useCallback(() => {
+		formatText(editText, previewLang)
+			.then(setEditText)
+			.catch((error: unknown) =>
+				setErrorMessage(
+					error instanceof Error
+						? `Cannot format: ${error.message}`
+						: "Cannot format this file.",
+				),
+			);
+	}, [editText, previewLang, setErrorMessage]);
 	const [isDragActive, setIsDragActive] = useState(false);
 	const [replaceTarget, setReplaceTarget] = useState<ObjectEntry | null>(null);
 	const [renameTarget, setRenameTarget] = useState<ObjectEntry | null>(null);
@@ -301,6 +390,22 @@ function BrowsePage() {
 		};
 	}, [preview]);
 
+	// Escape has to clear React state too, not just close the <dialog>: the
+	// browser's own dismissal leaves `preview` set, which would strand an
+	// invisible modal that can never be reopened.
+	useEffect(() => {
+		if (!preview) {
+			return;
+		}
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") {
+				closePreview();
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [preview, closePreview]);
+
 	// A failed listing rendered as "no files" is indistinguishable from an empty
 	// bucket, so every fetch error here was invisible. Show it.
 	useEffect(() => {
@@ -351,14 +456,6 @@ function BrowsePage() {
 		}
 		return entries;
 	}, [provider, cfDistId, cfZoneId, cfToken, cdnBaseUrl, previewKey]);
-
-	const runningTransfers = useMemo(
-		() =>
-			(transfersQuery.data ?? []).filter(
-				(transfer) => transfer.status === "running",
-			),
-		[transfersQuery.data],
-	);
 
 	const syncTransfer = async (transfer: TransferRecord) => {
 		updateTransferCache(queryClient, transfer);
@@ -468,21 +565,30 @@ function BrowsePage() {
 			}
 			const nextPreview = await previewObject(provider, bucket, item.key);
 			let nextText: string | null = null;
+			let nextFormatted: string | null = null;
 			if (isEditableTextContentType(nextPreview.contentType)) {
-				nextText = await fetch(nextPreview.blobUrl).then((response) =>
+				const raw = await fetch(nextPreview.blobUrl).then((response) =>
 					response.text(),
 				);
+				nextText = raw;
+				// The editor opens pretty-printed; `nextText` stays the raw bucket
+				// bytes so "Save changes" honestly reflects a diff against S3.
+				nextFormatted = await formatTextOrKeep(
+					raw,
+					detectTextLang(item.key, nextPreview.contentType),
+				);
 			}
-			return { nextPreview, nextText };
+			return { nextPreview, nextText, nextFormatted };
 		},
-		onSuccess: ({ nextPreview, nextText }, item) => {
+		onSuccess: ({ nextPreview, nextText, nextFormatted }, item) => {
 			if (preview) {
 				URL.revokeObjectURL(preview.blobUrl);
 			}
 			setPreview(nextPreview);
 			setPreviewKey(item.key);
 			setTextPreview(nextText);
-			setEditText(nextText ?? "");
+			setEditText(nextFormatted ?? "");
+			setEditMode(false);
 		},
 		onError: (error) => {
 			setErrorMessage(
@@ -492,7 +598,7 @@ function BrowsePage() {
 	});
 
 	const saveTextMutation = useMutation({
-		mutationFn: async () => {
+		mutationFn: async (cacheControl: string) => {
 			if (!(provider && bucket && preview && previewKey)) {
 				throw new Error("Nothing to save.");
 			}
@@ -504,12 +610,20 @@ function BrowsePage() {
 				previewKey,
 				editText,
 				preview.contentType,
+				cacheControl.trim() || undefined,
 			);
 
 			// A stale CDN copy is the other half of "my edit disappeared". AWS can
 			// purge in-app; R2 cannot (Cloudflare's API refuses browser calls), so
 			// there we point at the copy-paste command instead of failing. Either
 			// way a purge problem must never read as a save failure.
+			//
+			// An object nobody caches needs no purge at all, so don't imply one.
+			const wasCached =
+				isCached(preview.cacheControl) || isCached(cacheControl);
+			if (!wasCached) {
+				return { saved: editText, cacheControl, purge: undefined };
+			}
 			if (canPurge(provider)) {
 				const purge = await purgeCache(provider, [previewKey]).catch(
 					(error: unknown) =>
@@ -517,20 +631,27 @@ function BrowsePage() {
 							error instanceof Error ? error.message : String(error)
 						}`,
 				);
-				return { saved: editText, purge };
+				return { saved: editText, cacheControl, purge };
 			}
 			const needsManualPurge =
 				provider.type === "r2" &&
 				Boolean(provider.cloudflareZoneId && provider.cloudflareApiToken);
 			return {
 				saved: editText,
+				cacheControl,
 				purge: needsManualPurge
-					? "CDN not purged — open Purge cache for the command to run."
+					? "CDN not purged — run the purge command shown in the save dialog."
 					: undefined,
 			};
 		},
-		onSuccess: async ({ saved, purge }) => {
+		onSuccess: async ({ saved, cacheControl, purge }) => {
 			setTextPreview(saved);
+			setPreview((current) =>
+				current
+					? { ...current, cacheControl: cacheControl.trim() || undefined }
+					: current,
+			);
+			setSaveOpen(false);
 			setStatusMessage(
 				purge ? `Saved to ${bucket}. ${purge}` : `Saved to ${bucket}.`,
 			);
@@ -681,6 +802,7 @@ function BrowsePage() {
 								updatedAt: Date.now(),
 							});
 						},
+						provider.defaultCacheControl,
 					);
 					await syncTransfer({
 						id: transferId,
@@ -781,6 +903,9 @@ function BrowsePage() {
 							updatedAt: Date.now(),
 						});
 					},
+					// A replace is a new object under an old name, so it gets the
+					// provider's default rather than inheriting the old header.
+					provider.defaultCacheControl,
 				);
 				if (nextKey !== item.key) {
 					await deleteKeys(provider, bucket, [item.key]);
@@ -1463,7 +1588,16 @@ function BrowsePage() {
 			) : null}
 
 			{preview ? (
+				// Deliberately not a native <dialog>: showModal() puts it in the top
+				// layer, which renders it above the save and purge dialogs opened from
+				// inside it. Escape is handled by the keydown effect instead.
 				<div className="preview-modal">
+					<button
+						aria-label="Close preview"
+						className="preview-backdrop"
+						onClick={closePreview}
+						type="button"
+					/>
 					<div className="preview-frame">
 						<div className="mb-4 flex items-center justify-between gap-4">
 							<div>
@@ -1489,13 +1623,7 @@ function BrowsePage() {
 									</Button>
 								) : null}
 								<Button
-									onClick={() => {
-										URL.revokeObjectURL(preview.blobUrl);
-										setPreview(null);
-										setPreviewKey(null);
-										setTextPreview(null);
-										setEditText("");
-									}}
+									onClick={closePreview}
 									size="sm"
 									type="button"
 									variant="outline"
@@ -1507,12 +1635,50 @@ function BrowsePage() {
 						{textPreview !== null &&
 						isEditableTextContentType(preview.contentType) ? (
 							<div className="flex flex-col gap-3">
-								<Textarea
-									className="h-[62vh] w-[80vw] max-w-full resize-none font-mono text-sm"
-									onChange={(event) => setEditText(event.target.value)}
-									spellCheck={false}
-									value={editText}
-								/>
+								<div className="flex flex-wrap items-center justify-between gap-2">
+									<div className="flex items-center gap-2">
+										<button
+											className={cn(
+												"toggle-button",
+												!editMode && "toggle-button-active",
+											)}
+											onClick={() => setEditMode(false)}
+											type="button"
+										>
+											Preview
+										</button>
+										<button
+											className={cn(
+												"toggle-button",
+												editMode && "toggle-button-active",
+											)}
+											onClick={() => setEditMode(true)}
+											type="button"
+										>
+											Edit
+										</button>
+									</div>
+									{editMode && canFormat(previewLang) ? (
+										<Button
+											onClick={applyFormat}
+											size="sm"
+											type="button"
+											variant="outline"
+										>
+											Format {previewLang}
+										</Button>
+									) : null}
+								</div>
+								{editMode ? (
+									<Textarea
+										className="h-[62vh] w-full resize-none font-mono text-sm"
+										onChange={(event) => setEditText(event.target.value)}
+										spellCheck={false}
+										value={editText}
+									/>
+								) : (
+									<RichTextViewer lang={previewLang} text={editText} />
+								)}
 								<div className="flex items-center justify-end gap-2">
 									<Button
 										disabled={editText === textPreview}
@@ -1527,7 +1693,16 @@ function BrowsePage() {
 										disabled={
 											editText === textPreview || saveTextMutation.isPending
 										}
-										onClick={() => saveTextMutation.mutate()}
+										onClick={() => {
+											// Pre-fill with what the object already has, so the common
+											// case is one click and the header never silently changes.
+											setSaveCacheControl(
+												preview.cacheControl ||
+													provider?.defaultCacheControl ||
+													suggestCacheControl(previewKey ?? ""),
+											);
+											setSaveOpen(true);
+										}}
 										size="sm"
 										type="button"
 										variant="default"
@@ -1542,6 +1717,121 @@ function BrowsePage() {
 					</div>
 				</div>
 			) : null}
+
+			<Dialog onOpenChange={setSaveOpen} open={saveOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Save {preview?.fileName}</DialogTitle>
+						<DialogDescription>
+							Cache-Control is written with the file. A long TTL is what makes
+							the CDN answer for free instead of billing you for a fetch from
+							the bucket on every view — the trade is that viewers keep the old
+							copy until it expires or you purge.
+						</DialogDescription>
+					</DialogHeader>
+
+					{/* min-w-0: DialogContent is a grid, and a grid item defaults to
+					    min-width:auto, so the wide <pre> below would stretch the track
+					    past the dialog instead of scrolling inside it. */}
+					<div className="flex min-w-0 flex-col gap-2">
+						<div className="section-label">Cache-Control</div>
+						<div className="flex flex-wrap gap-2">
+							{CACHE_PRESETS.map((preset) => (
+								<button
+									className={cn(
+										"toggle-button",
+										saveCacheControl === preset.value && "toggle-button-active",
+									)}
+									key={preset.value}
+									onClick={() => setSaveCacheControl(preset.value)}
+									title={preset.hint}
+									type="button"
+								>
+									{preset.label}
+								</button>
+							))}
+						</div>
+						<Input
+							onChange={(event) => setSaveCacheControl(event.target.value)}
+							placeholder="public, max-age=300, must-revalidate"
+							value={saveCacheControl}
+						/>
+						<p className="text-muted-foreground text-xs">
+							{describeCacheControl(saveCacheControl)}
+						</p>
+						<p className="text-muted-foreground text-xs">
+							Currently stored on this object:{" "}
+							<code>{preview?.cacheControl || "nothing"}</code>
+						</p>
+					</div>
+
+					{savePurgeCommand ? (
+						<div className="mt-5 flex min-w-0 flex-col gap-2">
+							<div className="flex items-center justify-between gap-3">
+								<span className="section-label">
+									Purge this file after saving
+								</span>
+								<Button
+									onClick={async () => {
+										await navigator.clipboard.writeText(
+											savePurgeCommand.command,
+										);
+										setStatusMessage("Copied the purge command.");
+									}}
+									size="xs"
+									type="button"
+									variant="outline"
+								>
+									Copy
+								</Button>
+							</div>
+							<pre className="preview-code max-h-40 overflow-auto text-xs">
+								{savePurgeCommand.command}
+							</pre>
+							<p className="text-muted-foreground text-xs">
+								{savePurgeCommand.scope}
+							</p>
+							{savePurgeCommand.notes.map((note) => (
+								<p className="text-destructive text-xs" key={note}>
+									{note}
+								</p>
+							))}
+							{provider && canPurge(provider) ? (
+								<p className="text-muted-foreground text-xs">
+									Saving also runs this purge in-app — the command is here for
+									scripting or if the in-app call fails.
+								</p>
+							) : (
+								<p className="text-muted-foreground text-xs">
+									Cloudflare's API refuses browser calls, so run this yourself
+									after saving. Until it completes, the edge keeps serving the
+									old file.
+								</p>
+							)}
+						</div>
+					) : null}
+
+					<DialogFooter className="mt-5">
+						<Button
+							onClick={() => setSaveOpen(false)}
+							size="xs"
+							type="button"
+							variant="outline"
+						>
+							Cancel
+						</Button>
+						<Button
+							disabled={saveTextMutation.isPending}
+							onClick={() => saveTextMutation.mutate(saveCacheControl)}
+							size="xs"
+							type="button"
+							variant="default"
+						>
+							{saveTextMutation.isPending ? "Saving…" : "Save file"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 
 			<Dialog open={purgeOpen} onOpenChange={setPurgeOpen}>
 				<DialogContent>
@@ -2034,12 +2324,8 @@ function EntryRow(props: EntryActions & { maxSize: number }) {
 }
 
 function ObjectCard(props: EntryActions & { maxSize: number }) {
-	const { item, maxSize } = props;
+	const { item } = props;
 	const isFolder = item.kind === "folder";
-	const weight =
-		!isFolder && maxSize > 0
-			? Math.max(2, Math.sqrt(item.size / maxSize) * 100)
-			: 0;
 	return (
 		<div className="object-card" data-selected={props.selected}>
 			<div className="flex items-start justify-between gap-2">

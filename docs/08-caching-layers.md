@@ -25,12 +25,46 @@ change didn't show up" is always one of them. Identify which before changing cod
 S3 and R2 GET responses carry `Last-Modified` but no `Cache-Control`, which makes
 them eligible for *heuristic freshness* (RFC 9111 §4.2.2) in the browser's private
 cache. The HTTP cache keys on URL, and the SDK's request URL is stable
-(`.../bucket/key?x-id=GetObject`), so in principle a `GET` can be served from cache.
+(`.../bucket/key?x-id=GetObject`), so a `GET` can be served from cache.
 
-**In practice this does not corrupt the edit flow**, because RFC 9111 §4.4 requires
-a cache to invalidate its stored response for a URI after a successful unsafe
-method. The `PutObject` in `putObjectText` evicts the cached `GET` before the
-read-back runs.
+**This did corrupt the edit flow, and it is now fixed by
+`ResponseCacheControl: "no-cache"` on every content/metadata read** —
+`getObjectText`, `previewObject`, `headObject`, `downloadObject`. See
+[cache-control](11-cache-control.md).
+
+### The RFC 9111 §4.4 argument this page used to make — and why it is wrong
+
+This page previously claimed the cache could not corrupt a save, because RFC 9111
+§4.4 requires a cache to invalidate its stored response for a URI after a
+successful unsafe method, so the `PutObject` would evict the cached `GET`.
+
+**The premise fails on "for a URI."** The AWS SDK tags every operation with its own
+`x-id`, so the two requests are not the same URI:
+
+```
+write  PUT  .../bucket/key?x-id=PutObject
+read   GET  .../bucket/key?x-id=GetObject     ← different cache key
+```
+
+The invalidation never fires between them. Measured symptom: `putObjectText`'s
+read-back compared the new text against the browser's **pre-write cached body**,
+mismatched, and threw `"Save did not stick: …"` on a save that had actually
+landed. The object list showed the new byte count at the same moment. Reopening
+the file also served the pre-save copy.
+
+Confirming it took a direct comparison, because both requests return `200` and
+look identical in a network log:
+
+```js
+// same URL, twice — the second bypasses the browser cache
+await fetch(url).then(r => r.text())                    // stale pre-write body
+await fetch(url, { cache: "reload" }).then(r => r.text())
+```
+
+The lesson is the same one this page already recorded once, in the other
+direction: **a plausible spec citation is not a measurement.** The §4.4 argument
+was correct about the RFC and wrong about this code, because nobody checked that
+the two URLs matched.
 
 ### Do not "fix" this with a fetch cache mode
 
@@ -43,7 +77,14 @@ the preflight fails against any bucket whose CORS policy enumerates
 `AllowedHeaders`. Full detail and the measurement in
 [s3-client](03-s3-client.md).
 
-The actual root cause of the original bug was invisible errors plus no
+The correct instrument is `ResponseCacheControl` — a signed S3 query parameter,
+invisible to the CORS preflight. See [cache-control](11-cache-control.md).
+
+Also rejected: a middleware appending a unique query param to every `GET`/`HEAD`.
+It defeated the cache and silently broke `ListObjectsV2` (empty listing, no
+error). Scope any such param to `GetObject`/`HeadObject` by command.
+
+The original "vanished edits" bug had two further causes — invisible errors and no
 write-verification — see [text-editing](06-text-editing.md).
 
 ## ② TanStack Query cache
@@ -100,15 +141,23 @@ Fastest disambiguation between a cache and a failed write: open the object's
 public or signed URL in a fresh incognito window. If the new content is there, the
 write landed and something downstream is serving a stale copy.
 
+## Object `Cache-Control` (layer ④'s input)
+
+Uploads now write a `Cache-Control`, and the save dialog offers one — without it a
+CDN picks its own TTL and keeps re-fetching from the bucket, which is the billing
+problem. `putObjectText` still never *invents* one: an explicit choice wins,
+otherwise the object's existing header is preserved. See
+[cache-control](11-cache-control.md).
+
 ## Deliberately not cached
 
 - No service worker.
-- No `Cache-Control` is written onto objects on save — existing values are
-  preserved, never invented. Setting cache headers is the operator's call.
 - No offline mode.
+- No metadata-only edit path: changing an object's `Cache-Control` means rewriting
+  its content.
 
 ## Relations
 
-- `explains` → [text-editing](06-text-editing.md), [cdn-purge](07-cdn-purge.md)
+- `explains` → [text-editing](06-text-editing.md), [cdn-purge](07-cdn-purge.md), [cache-control](11-cache-control.md)
 - `implemented-in` → [s3-client](03-s3-client.md)
 - `feeds` → [failure-modes](09-failure-modes.md)

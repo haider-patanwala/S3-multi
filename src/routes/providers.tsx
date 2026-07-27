@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { CACHE_PRESETS } from "../lib/cache-control";
 import {
 	getActiveProviderId,
 	removeProvider,
@@ -30,7 +31,19 @@ type FormState = {
 	buckets: string[];
 	defaultBucket: string;
 	forcePathStyle: boolean;
+	defaultCacheControl: string;
 	createdAt?: number;
+	/**
+	 * CDN/purge settings live in the browser's Purge dialog, not on this form.
+	 * They are carried through here so saving a provider does not wipe them.
+	 */
+	cdn: Pick<
+		ProviderConfig,
+		| "cloudFrontDistributionId"
+		| "cloudflareZoneId"
+		| "cloudflareApiToken"
+		| "publicBaseUrl"
+	>;
 };
 
 const blankForm: FormState = {
@@ -43,6 +56,8 @@ const blankForm: FormState = {
 	buckets: [],
 	defaultBucket: "",
 	forcePathStyle: false,
+	defaultCacheControl: "",
+	cdn: {},
 };
 
 function toForm(provider?: ProviderConfig): FormState {
@@ -60,7 +75,14 @@ function toForm(provider?: ProviderConfig): FormState {
 		buckets: provider.buckets ?? [],
 		defaultBucket: provider.defaultBucket ?? "",
 		forcePathStyle: provider.forcePathStyle ?? false,
+		defaultCacheControl: provider.defaultCacheControl ?? "",
 		createdAt: provider.createdAt,
+		cdn: {
+			cloudFrontDistributionId: provider.cloudFrontDistributionId,
+			cloudflareZoneId: provider.cloudflareZoneId,
+			cloudflareApiToken: provider.cloudflareApiToken,
+			publicBaseUrl: provider.publicBaseUrl,
+		},
 	};
 }
 
@@ -78,7 +100,9 @@ function toDraft(form: FormState): ProviderDraft {
 		buckets: buckets.length ? buckets : undefined,
 		defaultBucket,
 		forcePathStyle: form.forcePathStyle,
+		defaultCacheControl: form.defaultCacheControl.trim() || undefined,
 		createdAt: form.createdAt,
+		...form.cdn,
 	};
 }
 
@@ -535,6 +559,49 @@ function ProvidersPage() {
 							<span className="field-note">
 								Pre-define buckets for this provider. Recommended for R2 and
 								custom endpoints where bucket listing may not be available.
+							</span>
+						</div>
+						<div className="field">
+							<span>Default Cache-Control</span>
+							<div className="flex flex-wrap gap-2">
+								{CACHE_PRESETS.map((preset) => (
+									<button
+										className={cn(
+											"toggle-button",
+											form.defaultCacheControl === preset.value &&
+												"toggle-button-active",
+										)}
+										key={preset.value}
+										onClick={() =>
+											setForm((current) => ({
+												...current,
+												defaultCacheControl:
+													current.defaultCacheControl === preset.value
+														? ""
+														: preset.value,
+											}))
+										}
+										title={preset.hint}
+										type="button"
+									>
+										{preset.label}
+									</button>
+								))}
+							</div>
+							<input
+								className="input"
+								onChange={(event) =>
+									setForm((current) => ({
+										...current,
+										defaultCacheControl: event.target.value,
+									}))
+								}
+								placeholder="public, max-age=31536000, immutable"
+								value={form.defaultCacheControl}
+							/>
+							<span className="field-note">
+								Written on every upload, and offered when saving an edit. Empty
+								picks per file type — long for media, short for editable text.
 							</span>
 						</div>
 						<label className="field">

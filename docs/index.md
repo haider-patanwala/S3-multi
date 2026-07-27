@@ -30,7 +30,8 @@ this codebase correctly on the first try.
 | `cdn-purge` | [07-cdn-purge.md](07-cdn-purge.md) | subsystem | CloudFront invalidation, Cloudflare purge, the CORS wall and the two shims around it |
 | `caching-layers` | [08-caching-layers.md](08-caching-layers.md) | concept | The four caches, and which one ate your edit |
 | `failure-modes` | [09-failure-modes.md](09-failure-modes.md) | reference | Symptom → cause → fix catalogue |
-| `development` | [10-development.md](10-development.md) | reference | Commands, checks, adding a provider field |
+| `development` | [10-development.md](10-development.md) | reference | Commands, checks, adding a provider field, browser-verification traps |
+| `cache-control` | [11-cache-control.md](11-cache-control.md) | subsystem | Writing edge-cache headers vs always reading fresh — two opposite needs, two different params |
 
 ---
 
@@ -53,6 +54,11 @@ graph TD
   caching-layers --> failure-modes[failure-modes]
   cdn-purge --> failure-modes
   architecture --> development[development]
+  s3-client --> cache-control[cache-control]
+  cache-control --> caching-layers
+  cache-control --> cdn-purge
+  text-editing --> cache-control
+  transfers --> cache-control
 ```
 
 ---
@@ -65,6 +71,8 @@ Pick the path, read it in order, skip the rest.
 |------|------|
 | "Saving a file doesn't stick" | `failure-modes` → `caching-layers` → `text-editing` |
 | "Purge isn't working" | `cdn-purge` → `caching-layers` → `development` |
+| "The CDN keeps hitting my bucket / the bill is too high" | `cache-control` → `caching-layers` → `cdn-purge` |
+| "I'm reading stale bytes" | `cache-control` → `caching-layers` |
 | "Add a new S3-compatible provider" | `provider-vault` → `s3-client` → `development` |
 | "Add a field to a provider" | `development` (has the exact 4-file checklist) |
 | "Why is there no backend?" | `product` → `architecture` |
@@ -87,5 +95,12 @@ Facts that hold across the whole product. Violating one is a bug, not a design c
    that is set but never rendered. See [failure-modes](09-failure-modes.md).
 5. **Secrets are encrypted at rest in IndexedDB.** Plaintext credentials exist
    only in memory. See [provider-vault](02-provider-vault.md).
-6. **An overwrite preserves the object's metadata.** See
+6. **An overwrite preserves the object's metadata.** The one field a caller may
+   override is `Cache-Control`, and only explicitly. See
    [text-editing](06-text-editing.md).
+7. **Every read of object content or metadata sends `ResponseCacheControl: "no-cache"`.**
+   The object's own stored `Cache-Control` is a different thing and is left alone.
+   See [cache-control](11-cache-control.md).
+8. **A spec citation is not a measurement.** Two separate bugs shipped on
+   plausible-but-unverified reasoning about the HTTP cache. Measure the actual
+   requests. See [caching-layers](08-caching-layers.md).
