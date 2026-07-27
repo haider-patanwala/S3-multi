@@ -1,29 +1,37 @@
+import {
+	ArrowDataTransferVerticalIcon,
+	CloudServerIcon,
+	Folder02Icon,
+	HelpCircleIcon,
+	Moon02Icon,
+	SidebarLeft01Icon,
+	Sun01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { useState } from "react";
 import {
 	activeProviderQueryOptions,
 	providerQueryOptions,
 	transferQueryOptions,
 } from "../lib/query-options";
+import { applyTheme, readTheme, type Theme } from "../lib/theme";
 import { cn, formatBytes, shortProviderLabel } from "../lib/utils";
 
 const navItems = [
-	{
-		to: "/browse",
-		label: "Browser",
-		blurb: "Inspect buckets and operate on objects",
-	},
-	{
-		to: "/providers",
-		label: "Providers",
-		blurb: "Store encrypted S3 credentials locally",
-	},
-	{
-		to: "/transfers",
-		label: "Transfers",
-		blurb: "Watch uploads, downloads, and retries",
-	},
+	{ to: "/browse", label: "Browser", icon: Folder02Icon },
+	{ to: "/providers", label: "Providers", icon: CloudServerIcon },
+	{ to: "/transfers", label: "Transfers", icon: ArrowDataTransferVerticalIcon },
+	{ to: "/help", label: "Help", icon: HelpCircleIcon },
 ] as const;
+
+const pageTitles: [prefix: string, title: string][] = [
+	["/browse", "Browser"],
+	["/providers", "Providers"],
+	["/transfers", "Transfers"],
+	["/help", "Help"],
+];
 
 export function AppShell() {
 	const providersQuery = useQuery(providerQueryOptions);
@@ -32,6 +40,8 @@ export function AppShell() {
 	const pathname = useRouterState({
 		select: (state) => state.location.pathname,
 	});
+	const [collapsed, setCollapsed] = useState(false);
+	const [theme, setTheme] = useState<Theme>(readTheme);
 
 	const providers = providersQuery.data ?? [];
 	const activeProvider = providers.find(
@@ -46,73 +56,132 @@ export function AppShell() {
 		0,
 	);
 
+	const title =
+		pageTitles.find(([prefix]) => pathname.startsWith(prefix))?.[1] ??
+		"Overview";
+
+	function toggleTheme() {
+		const next: Theme = theme === "dark" ? "light" : "dark";
+		setTheme(next);
+		applyTheme(next);
+	}
+
 	return (
-		<div className="min-h-screen overflow-x-hidden">
-			<div className="app-shell mx-auto max-w-[1780px] px-3 py-3 sm:px-5 lg:px-6">
-				<header className="control-panel mb-4 overflow-hidden">
-					<div className="absolute inset-y-0 right-0 hidden w-56 bg-[radial-gradient(circle_at_center,rgba(255,157,61,0.18),transparent_70%)] lg:block" />
-					<div className="relative grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:px-5 lg:py-4">
-						<div className="space-y-3">
-							<div className="eyebrow">Client-side control room</div>
-							<div className="max-w-3xl">
-								<h1 className="font-display text-3xl text-stone-50 uppercase tracking-[0.18em] sm:text-[2.2rem]">
-									S3 Multi
-								</h1>
-								<p className="mt-1 max-w-3xl text-[0.82rem] text-stone-400 leading-5">
-									Encrypted browser-native storage for S3, R2, and custom
-									endpoints.
-								</p>
-							</div>
-							<div className="flex flex-wrap gap-2">
-								{navItems.map((item) => (
-									<Link
-										key={item.to}
-										className={cn(
-											"nav-chip min-w-[140px]",
-											pathname.startsWith(item.to) && "nav-chip-active",
-										)}
-										to={item.to}
-									>
-										<span className="font-display text-base uppercase tracking-[0.16em]">
-											{item.label}
-										</span>
-										<span className="text-stone-400 text-xs">{item.blurb}</span>
-									</Link>
-								))}
-							</div>
+		<div className="workspace-frame min-h-screen overflow-x-hidden">
+			<div
+				className={cn(
+					"app-shell workspace-shell mx-auto",
+					collapsed && "workspace-shell-collapsed",
+				)}
+			>
+				<aside
+					className={cn(
+						"shell-sidebar",
+						collapsed && "shell-sidebar-collapsed",
+					)}
+				>
+					<div className="shell-brand">
+						<div className="shell-brand-row">
+							<div className="shell-mark">S3</div>
+							{!collapsed && (
+								<button
+									className="sidebar-toggle"
+									onClick={() => setCollapsed(true)}
+									title="Collapse sidebar"
+									type="button"
+								>
+									<HugeiconsIcon
+										icon={SidebarLeft01Icon}
+										size={16}
+										strokeWidth={1.5}
+									/>
+								</button>
+							)}
+						</div>
+						{!collapsed && (
+							<span className="shell-badge">
+								{activeProvider
+									? shortProviderLabel(activeProvider.type)
+									: "No provider"}
+							</span>
+						)}
+					</div>
+
+					<nav className="shell-nav">
+						{navItems.map((item) => (
+							<Link
+								key={item.to}
+								className={cn(
+									"nav-chip",
+									pathname.startsWith(item.to) && "nav-chip-active",
+								)}
+								title={collapsed ? item.label : undefined}
+								to={item.to}
+							>
+								<HugeiconsIcon icon={item.icon} size={16} strokeWidth={1.5} />
+								{!collapsed && (
+									<span className="nav-chip-label">{item.label}</span>
+								)}
+							</Link>
+						))}
+					</nav>
+
+					{!collapsed && (
+						<div className="shell-aside-note">
+							<div className="metric-label">Active provider</div>
+							<p>{activeProvider?.name ?? "None selected"}</p>
+						</div>
+					)}
+				</aside>
+
+				<div className="shell-stage min-w-0">
+					<header className="overview-panel">
+						<div className="overview-intro">
+							{collapsed && (
+								<button
+									className="sidebar-toggle"
+									onClick={() => setCollapsed(false)}
+									title="Expand sidebar"
+									type="button"
+								>
+									<HugeiconsIcon
+										icon={SidebarLeft01Icon}
+										size={16}
+										strokeWidth={1.5}
+									/>
+								</button>
+							)}
+							<h2 className="overview-title">{title}</h2>
 						</div>
 
 						<div className="header-meta">
-							<div className="header-stat">
-								<span className="metric-label">Provider</span>
-								<span className="header-stat-value">
-									{activeProvider?.name ?? "None"}
-								</span>
-								<span className="header-stat-note">
-									{activeProvider
-										? shortProviderLabel(activeProvider.type)
-										: "No active selection"}
-								</span>
-							</div>
-							<div className="header-stat">
-								<span className="metric-label">Transfers</span>
-								<span className="header-stat-value">{runningTransfers}</span>
-								<span className="header-stat-note">
-									{formatBytes(queuedBytes)} queued
-								</span>
-							</div>
-							<div className="header-stat">
-								<span className="metric-label">Vault</span>
-								<span className="header-stat-value">{providers.length}</span>
-								<span className="header-stat-note">HTTPS only</span>
-							</div>
+							{runningTransfers > 0 && (
+								<div className="header-stat">
+									<span className="header-stat-value">{runningTransfers}</span>
+									<span className="header-stat-note">
+										active · {formatBytes(queuedBytes)}
+									</span>
+								</div>
+							)}
+							<button
+								className="icon-button"
+								onClick={toggleTheme}
+								title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+								type="button"
+							>
+								<HugeiconsIcon
+									icon={theme === "dark" ? Sun01Icon : Moon02Icon}
+									size={16}
+									strokeWidth={1.5}
+								/>
+							</button>
 						</div>
-					</div>
-				</header>
+					</header>
 
-				<section className="min-w-0">
-					<Outlet />
-				</section>
+					<section className="shell-main min-w-0">
+						<Outlet />
+					</section>
+				</div>
 			</div>
 		</div>
 	);

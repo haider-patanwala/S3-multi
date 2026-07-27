@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { CACHE_PRESETS } from "../lib/cache-control";
 import {
 	getActiveProviderId,
 	removeProvider,
@@ -27,9 +28,22 @@ type FormState = {
 	region: string;
 	accessKeyId: string;
 	secretAccessKey: string;
+	buckets: string[];
 	defaultBucket: string;
 	forcePathStyle: boolean;
+	defaultCacheControl: string;
 	createdAt?: number;
+	/**
+	 * CDN/purge settings live in the browser's Purge dialog, not on this form.
+	 * They are carried through here so saving a provider does not wipe them.
+	 */
+	cdn: Pick<
+		ProviderConfig,
+		| "cloudFrontDistributionId"
+		| "cloudflareZoneId"
+		| "cloudflareApiToken"
+		| "publicBaseUrl"
+	>;
 };
 
 const blankForm: FormState = {
@@ -39,8 +53,11 @@ const blankForm: FormState = {
 	region: "us-east-1",
 	accessKeyId: "",
 	secretAccessKey: "",
+	buckets: [],
 	defaultBucket: "",
 	forcePathStyle: false,
+	defaultCacheControl: "",
+	cdn: {},
 };
 
 function toForm(provider?: ProviderConfig): FormState {
@@ -55,13 +72,23 @@ function toForm(provider?: ProviderConfig): FormState {
 		region: provider.region ?? "",
 		accessKeyId: provider.accessKeyId,
 		secretAccessKey: provider.secretAccessKey,
+		buckets: provider.buckets ?? [],
 		defaultBucket: provider.defaultBucket ?? "",
 		forcePathStyle: provider.forcePathStyle ?? false,
+		defaultCacheControl: provider.defaultCacheControl ?? "",
 		createdAt: provider.createdAt,
+		cdn: {
+			cloudFrontDistributionId: provider.cloudFrontDistributionId,
+			cloudflareZoneId: provider.cloudflareZoneId,
+			cloudflareApiToken: provider.cloudflareApiToken,
+			publicBaseUrl: provider.publicBaseUrl,
+		},
 	};
 }
 
 function toDraft(form: FormState): ProviderDraft {
+	const buckets = form.buckets.filter(Boolean);
+	const defaultBucket = form.defaultBucket || buckets[0] || undefined;
 	return {
 		id: form.id ?? crypto.randomUUID(),
 		name: form.name,
@@ -70,9 +97,12 @@ function toDraft(form: FormState): ProviderDraft {
 		region: form.region || undefined,
 		accessKeyId: form.accessKeyId,
 		secretAccessKey: form.secretAccessKey,
-		defaultBucket: form.defaultBucket || undefined,
+		buckets: buckets.length ? buckets : undefined,
+		defaultBucket,
 		forcePathStyle: form.forcePathStyle,
+		defaultCacheControl: form.defaultCacheControl.trim() || undefined,
 		createdAt: form.createdAt,
+		...form.cdn,
 	};
 }
 
@@ -99,6 +129,7 @@ function ProvidersPage() {
 	const providers = providersQuery.data ?? [];
 	const [selectedId, setSelectedId] = useState<string>();
 	const [form, setForm] = useState<FormState>(blankForm);
+	const [bucketInput, setBucketInput] = useState("");
 	const [notice, setNotice] = useState<string>(
 		"Add a provider, test the connection, then save it locally.",
 	);
@@ -112,6 +143,7 @@ function ProvidersPage() {
 	useEffect(() => {
 		const selected = providers.find((provider) => provider.id === selectedId);
 		setForm(toForm(selected));
+		setBucketInput("");
 	}, [providers, selectedId]);
 
 	const saveMutation = useMutation({
@@ -191,55 +223,38 @@ function ProvidersPage() {
 		},
 	});
 
-	const profileStats = useMemo(
-		() => [
-			{
-				label: "Vault entries",
-				value: providers.length,
-				subtle: "Stored locally in IndexedDB",
-			},
-			{
-				label: "Active",
-				value:
-					providers.find(
-						(provider) => provider.id === activeProviderIdQuery.data,
-					)?.name ?? "None",
-				subtle: "Used as the browse default",
-			},
-		],
+	const activeProviderName = useMemo(
+		() =>
+			providers.find((provider) => provider.id === activeProviderIdQuery.data)
+				?.name ?? "None",
 		[providers, activeProviderIdQuery.data],
 	);
 
 	return (
-		<div className="space-y-6">
-			<section className="control-panel px-5 py-5 lg:px-7 lg:py-6">
-				<div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-					<div>
-						<div className="section-label">Provider management</div>
-						<h2 className="mt-2 font-display text-3xl text-stone-100 uppercase tracking-[0.16em]">
-							Local credential vault
-						</h2>
-						<p className="mt-3 max-w-3xl text-sm text-stone-300 leading-6">
-							Create AWS S3, Cloudflare R2, or custom S3 profiles. Secrets are
-							encrypted before being written to IndexedDB, and they never leave
-							the browser.
-						</p>
-					</div>
-					<div className="grid gap-3 sm:grid-cols-2">
-						{profileStats.map((stat) => (
-							<div className="metric-card min-w-[220px]" key={stat.label}>
-								<div className="metric-label">{stat.label}</div>
-								<div className="metric-value text-2xl">{stat.value}</div>
-								<div className="metric-subtle">{stat.subtle}</div>
-							</div>
-						))}
-					</div>
+		<div className="space-y-4">
+			<div className="stat-strip">
+				<div className="stat-strip-group">
+					<span className="stat-strip-item">
+						<span className="stat-strip-value">{providers.length}</span>
+						{providers.length === 1 ? "profile" : "profiles"}
+					</span>
+					<span className="stat-strip-item">
+						active
+						<span
+							className={cn(
+								"stat-strip-value",
+								activeProviderName === "None" && "stat-strip-value-quiet",
+							)}
+						>
+							{activeProviderName}
+						</span>
+					</span>
 				</div>
-			</section>
+			</div>
 
-			<div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+			<div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
 				<section className="control-panel px-5 py-5">
-					<div className="flex items-center justify-between">
+					<div className="panel-header">
 						<div className="section-label">Stored profiles</div>
 						<button
 							className="button-secondary"
@@ -253,7 +268,7 @@ function ProvidersPage() {
 							New provider
 						</button>
 					</div>
-					<div className="mt-4 space-y-3">
+					<div className="stack-list mt-4">
 						{providers.length ? (
 							providers.map((provider) => {
 								const active = provider.id === activeProviderIdQuery.data;
@@ -261,10 +276,8 @@ function ProvidersPage() {
 								return (
 									<button
 										className={cn(
-											"w-full rounded-3xl border px-4 py-4 text-left transition",
-											selected
-												? "border-amber-400/45 bg-amber-500/10"
-												: "border-white/10 bg-white/4 hover:border-white/20 hover:bg-white/6",
+											"provider-card",
+											selected && "provider-card-active",
 										)}
 										key={provider.id}
 										onClick={() => setSelectedId(provider.id)}
@@ -272,10 +285,10 @@ function ProvidersPage() {
 									>
 										<div className="flex items-start justify-between gap-3">
 											<div>
-												<div className="font-display text-stone-100 text-xl uppercase tracking-[0.14em]">
+												<div className="provider-card-title">
 													{provider.name}
 												</div>
-												<div className="mt-1 text-amber-200/75 text-xs uppercase tracking-[0.18em]">
+												<div className="provider-card-type">
 													{shortProviderLabel(provider.type)}
 												</div>
 											</div>
@@ -283,12 +296,14 @@ function ProvidersPage() {
 												<span className="pill pill-active">Active</span>
 											) : null}
 										</div>
-										<div className="mt-4 text-stone-400 text-xs leading-5">
-											{provider.defaultBucket
-												? `Pinned bucket: ${provider.defaultBucket}`
-												: "Bucket selected from the browser header"}
+										<div className="provider-card-note">
+											{provider.buckets?.length
+												? `${provider.buckets.length} bucket${provider.buckets.length > 1 ? "s" : ""}${provider.defaultBucket ? ` · default: ${provider.defaultBucket}` : ""}`
+												: provider.defaultBucket
+													? `Pinned bucket: ${provider.defaultBucket}`
+													: "Bucket picked from browser context"}
 										</div>
-										<div className="mt-4 flex flex-wrap gap-2">
+										<div className="provider-card-actions">
 											<button
 												className="button-secondary"
 												onClick={(event) => {
@@ -320,7 +335,7 @@ function ProvidersPage() {
 								);
 							})
 						) : (
-							<div className="rounded-3xl border border-white/12 border-dashed bg-white/4 px-4 py-6 text-sm text-stone-400 leading-6">
+							<div className="empty-state">
 								No providers saved yet. Fill the form to create the first one.
 							</div>
 						)}
@@ -331,14 +346,14 @@ function ProvidersPage() {
 					<div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 						<div>
 							<div className="section-label">Edit profile</div>
-							<h3 className="mt-2 font-display text-2xl text-stone-100 uppercase tracking-[0.14em]">
+							<h3 className="page-subtitle mt-2">
 								{form.id ? "Update provider" : "Create provider"}
 							</h3>
 						</div>
 						<div className="status-banner max-w-xl">{notice}</div>
 					</div>
 
-					<div className="mt-6 grid gap-4 md:grid-cols-2">
+					<div className="form-grid mt-6">
 						<label className="field">
 							<span>Name</span>
 							<input
@@ -406,6 +421,10 @@ function ProvidersPage() {
 								type="password"
 								value={form.secretAccessKey}
 							/>
+							<span className="field-note">
+								AES-GCM encrypted in IndexedDB. Never sent anywhere but your
+								storage provider.
+							</span>
 						</label>
 						<label className="field">
 							<span>Region</span>
@@ -439,25 +458,152 @@ function ProvidersPage() {
 								value={form.endpoint}
 							/>
 						</label>
-						<label className="field">
-							<span>Default bucket</span>
+						<div className="field">
+							<span>Buckets</span>
+							<div className="flex gap-2">
+								<input
+									className="input flex-1"
+									onChange={(event) => setBucketInput(event.target.value)}
+									onKeyDown={(event) => {
+										if (event.key === "Enter") {
+											event.preventDefault();
+											const name = bucketInput.trim();
+											if (name && !form.buckets.includes(name)) {
+												setForm((current) => ({
+													...current,
+													buckets: [...current.buckets, name],
+													defaultBucket: current.defaultBucket || name,
+												}));
+												setBucketInput("");
+											}
+										}
+									}}
+									placeholder="Bucket name"
+									value={bucketInput}
+								/>
+								<button
+									className="button-secondary"
+									onClick={() => {
+										const name = bucketInput.trim();
+										if (name && !form.buckets.includes(name)) {
+											setForm((current) => ({
+												...current,
+												buckets: [...current.buckets, name],
+												defaultBucket: current.defaultBucket || name,
+											}));
+											setBucketInput("");
+										}
+									}}
+									type="button"
+								>
+									Add
+								</button>
+							</div>
+							{form.buckets.length > 0 && (
+								<div className="stack-list mt-2">
+									{form.buckets.map((name) => {
+										const isDefault = name === form.defaultBucket;
+										return (
+											<div
+												className="flex items-center justify-between gap-2 px-3 py-2"
+												key={name}
+											>
+												<div className="flex items-center gap-2">
+													<span>{name}</span>
+													{isDefault && (
+														<span className="pill pill-active">Default</span>
+													)}
+												</div>
+												<div className="flex gap-1">
+													{!isDefault && (
+														<button
+															className="button-quiet"
+															onClick={() =>
+																setForm((current) => ({
+																	...current,
+																	defaultBucket: name,
+																}))
+															}
+															type="button"
+														>
+															Set default
+														</button>
+													)}
+													<button
+														className="button-danger"
+														onClick={() =>
+															setForm((current) => {
+																const next = current.buckets.filter(
+																	(b) => b !== name,
+																);
+																return {
+																	...current,
+																	buckets: next,
+																	defaultBucket:
+																		current.defaultBucket === name
+																			? (next[0] ?? "")
+																			: current.defaultBucket,
+																};
+															})
+														}
+														type="button"
+													>
+														Remove
+													</button>
+												</div>
+											</div>
+										);
+									})}
+								</div>
+							)}
+							<span className="field-note">
+								Pre-define buckets for this provider. Recommended for R2 and
+								custom endpoints where bucket listing may not be available.
+							</span>
+						</div>
+						<div className="field">
+							<span>Default Cache-Control</span>
+							<div className="flex flex-wrap gap-2">
+								{CACHE_PRESETS.map((preset) => (
+									<button
+										className={cn(
+											"toggle-button",
+											form.defaultCacheControl === preset.value &&
+												"toggle-button-active",
+										)}
+										key={preset.value}
+										onClick={() =>
+											setForm((current) => ({
+												...current,
+												defaultCacheControl:
+													current.defaultCacheControl === preset.value
+														? ""
+														: preset.value,
+											}))
+										}
+										title={preset.hint}
+										type="button"
+									>
+										{preset.label}
+									</button>
+								))}
+							</div>
 							<input
 								className="input"
 								onChange={(event) =>
 									setForm((current) => ({
 										...current,
-										defaultBucket: event.target.value,
+										defaultCacheControl: event.target.value,
 									}))
 								}
-								placeholder="Optional pinned bucket"
-								value={form.defaultBucket}
+								placeholder="public, max-age=31536000, immutable"
+								value={form.defaultCacheControl}
 							/>
-							<span className="text-stone-500 text-xs leading-5">
-								Recommended for R2 and browser-only setups. It lets the app test
-								the connection with `HeadBucket` instead of relying on bucket
-								listing.
+							<span className="field-note">
+								Written on every upload, and offered when saving an edit. Empty
+								picks per file type — long for media, short for editable text.
 							</span>
-						</label>
+						</div>
 						<label className="field">
 							<span>Path style</span>
 							<div className="toggle-row">
@@ -477,7 +623,7 @@ function ProvidersPage() {
 								>
 									{form.forcePathStyle ? "Enabled" : "Disabled"}
 								</button>
-								<span className="text-stone-400 text-xs leading-5">
+								<span className="field-note">
 									R2 uses path-style internally. This toggle is mainly for
 									custom S3 endpoints such as MinIO.
 								</span>
@@ -485,7 +631,7 @@ function ProvidersPage() {
 						</label>
 					</div>
 
-					<div className="mt-6 flex flex-wrap gap-3">
+					<div className="form-actions mt-6">
 						<button
 							className="button-primary"
 							disabled={saveMutation.isPending}

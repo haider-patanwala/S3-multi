@@ -4,8 +4,16 @@
 		"esModuleInterop": true,
 		"jsx": "react-jsx",
 		"target": "ESNext",
+		"module": "ESNext",
 		"moduleResolution": "Bundler",
 		"lib": ["DOM", "DOM.Iterable", "ES2022"],
-		"skipLibCheck": true
-	}
+		"skipLibCheck": true,
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["./src/*"]
+		}
+	},
+	// *.check.ts are standalone node scripts (`node src/lib/cdn.check.ts`), not
+	// app code — node type-strips and runs them directly.
+	"exclude": ["**/*.check.ts"]
 }

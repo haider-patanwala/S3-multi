@@ -12,12 +12,8 @@ export const Route = createRootRouteWithContext<{
 		return (
 			<div className="mx-auto max-w-xl px-6 py-24 text-center">
 				<div className="section-label">404</div>
-				<p className="mt-3 font-display text-4xl text-stone-100 uppercase tracking-[0.18em]">
-					Route offline
-				</p>
-				<p className="mt-4 text-sm text-stone-400 leading-6">
-					The requested control surface does not exist.
-				</p>
+				<p className="page-title mt-3">Route not found</p>
+				<p className="page-copy mt-4">The requested page does not exist.</p>
 				<Link className="button-primary mt-6 inline-flex" to="/browse">
 					Return to browser
 				</Link>
@@ -30,8 +26,12 @@ function RootComponent() {
 	return (
 		<>
 			<AppShell />
-			<ReactQueryDevtools buttonPosition="top-right" />
-			<TanStackRouterDevtools position="bottom-right" />
+			{import.meta.env.VITE_NODE_ENV === "development" && (
+				<>
+					<ReactQueryDevtools buttonPosition="top-right" />
+					<TanStackRouterDevtools position="bottom-right" />
+				</>
+			)}
 		</>
 	);
 }

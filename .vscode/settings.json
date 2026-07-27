@@ -36,5 +36,6 @@
 	},
 	"[plaintext]": {
 		"editor.defaultFormatter": "biomejs.biome"
-	}
+	},
+	"snyk.advanced.autoSelectOrganization": true
 }

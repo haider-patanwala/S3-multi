@@ -1,7 +1,9 @@
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 import type { ProviderType } from "./types";
 
-export function cn(...values: Array<string | false | null | undefined>) {
-	return values.filter(Boolean).join(" ");
+export function cn(...inputs: ClassValue[]) {
+	return twMerge(clsx(inputs));
 }
 
 export function formatBytes(value?: number) {
@@ -83,6 +85,9 @@ const previewableExtensions = new Set([
 	"yaml",
 	"log",
 	"xml",
+	"html",
+	"htm",
+	"css",
 ]);
 
 export function extensionForKey(key: string) {
@@ -91,6 +96,17 @@ export function extensionForKey(key: string) {
 
 export function isPreviewableKey(key: string) {
 	return previewableExtensions.has(extensionForKey(key));
+}
+
+export function isEditableTextContentType(contentType: string) {
+	return (
+		contentType.startsWith("text/") ||
+		contentType.includes("yaml") ||
+		contentType.includes("yml") ||
+		contentType.includes("markdown") ||
+		contentType.includes("xml") ||
+		contentType.includes("json")
+	);
 }
 
 export function objectIcon(key: string) {

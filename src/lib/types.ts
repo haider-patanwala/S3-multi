@@ -8,8 +8,16 @@ export type ProviderConfig = {
 	region?: string;
 	accessKeyId: string;
 	secretAccessKey: string;
+	buckets?: string[];
 	defaultBucket?: string;
 	forcePathStyle?: boolean;
+	cloudFrontDistributionId?: string;
+	cloudflareZoneId?: string;
+	cloudflareApiToken?: string;
+	/** Public CDN origin serving this bucket, e.g. https://cdn.example.com. Enables single-file purges. */
+	publicBaseUrl?: string;
+	/** Cache-Control written on uploads and offered when saving. Empty falls back to a per-extension suggestion. */
+	defaultCacheControl?: string;
 	createdAt: number;
 	lastUsedAt?: number;
 };
@@ -20,10 +28,11 @@ export type ProviderDraft = Omit<ProviderConfig, "createdAt"> & {
 
 export type ProviderRecord = Omit<
 	ProviderConfig,
-	"accessKeyId" | "secretAccessKey"
+	"accessKeyId" | "secretAccessKey" | "cloudflareApiToken"
 > & {
 	accessKeyIdEncrypted: string;
 	secretAccessKeyEncrypted: string;
+	cloudflareApiTokenEncrypted?: string;
 };
 
 export type BrowserLocation = {
@@ -81,4 +90,6 @@ export type ObjectPreview = {
 	blobUrl: string;
 	contentType: string;
 	fileName: string;
+	/** The object's stored Cache-Control, so the save dialog can show what is really set. */
+	cacheControl?: string;
 };

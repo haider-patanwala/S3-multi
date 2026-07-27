@@ -1,8 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import ReactDOM from "react-dom/client";
+import { applyTheme, readTheme } from "./lib/theme";
 import { routeTree } from "./routeTree.gen";
 import "./styles.css";
+
+// Before first paint, so the page never flashes the wrong theme.
+applyTheme(readTheme());
 
 const queryClient = new QueryClient();
 

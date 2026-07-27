@@ -4,7 +4,6 @@ import {
 	DeleteObjectCommand,
 	DeleteObjectsCommand,
 	GetObjectCommand,
-	HeadBucketCommand,
 	HeadObjectCommand,
 	ListBucketsCommand,
 	ListObjectsV2Command,
@@ -12,6 +11,7 @@ import {
 	S3Client,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import { suggestCacheControl } from "./cache-control";
 import type {
 	ObjectEntry,
 	ObjectPreview,
@@ -70,24 +70,93 @@ export function resolveObjectContentType(key: string, rawContentType?: string) {
 	}
 }
 
-export function createClient(provider: ProviderConfig) {
-	return new S3Client({
-		region:
-			provider.type === "r2"
-				? provider.region || "auto"
-				: provider.region || DEFAULT_REGION,
-		endpoint: provider.endpoint || undefined,
-		forcePathStyle:
-			provider.type === "r2"
-				? true
-				: provider.type === "custom"
-					? Boolean(provider.forcePathStyle)
-					: false,
-		credentials: {
-			accessKeyId: provider.accessKeyId,
-			secretAccessKey: provider.secretAccessKey,
+/**
+ * `fetch` rejects with a bare `TypeError: Failed to fetch` for every network-layer
+ * failure — CORS preflight rejected, DNS miss, connection refused, bad endpoint —
+ * with no indication of which request died or why. That is unusable both for the
+ * operator and for anyone debugging this.
+ *
+ * One middleware at the point every command already routes through turns it into
+ * something actionable. It only rewrites the error; the request is untouched.
+ * Credentials are never included — hostname and path only.
+ */
+function attachFailureContext(client: S3Client) {
+	client.middlewareStack.add(
+		(next) => async (args) => {
+			try {
+				return await next(args);
+			} catch (error) {
+				const request = (args as { request?: unknown }).request as
+					| {
+							method?: string;
+							protocol?: string;
+							hostname?: string;
+							path?: string;
+					  }
+					| undefined;
+				/*
+				 * Discriminator: anything that actually reached the service carries
+				 * $metadata.httpStatusCode. Its absence means the request never got a
+				 * response — CORS rejection, DNS miss, refused connection, timeout.
+				 * Matching on error.message instead would be brittle: browsers say
+				 * "Failed to fetch", Node says "fetch failed" or "getaddrinfo ENOTFOUND".
+				 */
+				const reachedService =
+					typeof (error as { $metadata?: { httpStatusCode?: number } })
+						?.$metadata?.httpStatusCode === "number";
+
+				if (!reachedService && request?.hostname) {
+					const url = `${request.protocol ?? "https:"}//${request.hostname}${request.path ?? ""}`;
+					throw new Error(
+						`Blocked before reaching the server: ${request.method ?? "GET"} ${url}. ` +
+							"The browser refused it — almost always a CORS preflight rejection, " +
+							"otherwise an unreachable endpoint. Open DevTools → Network → the " +
+							"OPTIONS request to this URL to see which header or method the bucket " +
+							"policy is missing.",
+						{ cause: error },
+					);
+				}
+				throw error;
+			}
 		},
-	});
+		{ step: "finalizeRequest", name: "describeFetchFailure" },
+	);
+	return client;
+}
+
+export function createClient(provider: ProviderConfig) {
+	return attachFailureContext(
+		new S3Client({
+			region:
+				provider.type === "r2"
+					? provider.region || "auto"
+					: provider.region || DEFAULT_REGION,
+			endpoint: provider.endpoint || undefined,
+			forcePathStyle:
+				provider.type === "r2"
+					? true
+					: provider.type === "custom"
+						? Boolean(provider.forcePathStyle)
+						: false,
+			credentials: {
+				accessKeyId: provider.accessKeyId,
+				secretAccessKey: provider.secretAccessKey,
+			},
+			/*
+			 * Do NOT add `requestHandler: { cache: "no-store" }` here. It looks like a
+			 * harmless freshness fix, but per the Fetch spec the browser then appends
+			 * `Pragma: no-cache` and `Cache-Control: no-cache` REQUEST headers. Neither
+			 * is CORS-safelisted, so both land in the preflight's
+			 * Access-Control-Request-Headers — and any bucket whose CORS policy
+			 * enumerates AllowedHeaders instead of using "*" starts failing every
+			 * request with an opaque "Failed to fetch".
+			 *
+			 * Freshness is handled instead by ResponseCacheControl on the reads that
+			 * need it — a real, signed S3 query parameter, so it changes the cache
+			 * key without adding anything to the CORS preflight.
+			 */
+		}),
+	);
 }
 
 export function buildObjectUrl(
@@ -120,8 +189,17 @@ export async function testConnection(
 ): Promise<ProviderTestResult> {
 	const client = createClient(provider);
 	if (provider.defaultBucket) {
+		/*
+		 * Probe with the operation the browse view actually depends on, not
+		 * HeadBucket. A green HeadBucket proves nothing useful — bucket-scoped
+		 * tokens and per-operation CORS rendering mean it can pass while listing
+		 * still fails, and (as here) fail while listing works.
+		 */
 		await client.send(
-			new HeadBucketCommand({ Bucket: provider.defaultBucket }),
+			new ListObjectsV2Command({
+				Bucket: provider.defaultBucket,
+				MaxKeys: 1,
+			}),
 		);
 		return {
 			buckets: [provider.defaultBucket],
@@ -136,25 +214,32 @@ export async function testConnection(
 }
 
 export async function listBuckets(provider: ProviderConfig) {
-	if (provider.defaultBucket) {
-		return [provider.defaultBucket];
-	}
 	const client = createClient(provider);
 	try {
 		const response = await client.send(new ListBucketsCommand({}));
-		return (response.Buckets ?? [])
+		const buckets = (response.Buckets ?? [])
 			.map((bucket) => bucket.Name)
 			.filter(Boolean) as string[];
-	} catch (error) {
-		if (
-			error instanceof Error &&
-			/CORS|Failed to fetch|preflight|Access-Control-Allow-Origin/i.test(
-				error.message,
-			)
-		) {
-			return [];
+		if (provider.defaultBucket && !buckets.includes(provider.defaultBucket)) {
+			return [provider.defaultBucket, ...buckets];
 		}
-		throw error;
+		return buckets;
+	} catch {
+		/*
+		 * Account-level ListBuckets is best-effort from a browser and its failure says
+		 * nothing about whether a given bucket is usable: R2/S3 CORS is per-bucket, so
+		 * the preflight on the bare account endpoint has no policy to match and dies,
+		 * and bucket-scoped tokens get a 403. Fall back to the buckets we already know
+		 * about rather than failing the whole browse view.
+		 *
+		 * This used to match on error.message (/CORS|Failed to fetch|.../) — which
+		 * silently stopped matching the moment describeFetchFailure started rewriting
+		 * those messages, never covered 403, and rethrew whenever no default bucket
+		 * was set, leaving the operator with an empty picker and no way in.
+		 */
+		return [
+			...new Set([provider.defaultBucket, ...(provider.buckets ?? [])]),
+		].filter(Boolean) as string[];
 	}
 }
 
@@ -270,13 +355,36 @@ export async function renameKey(
 	await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: fromKey }));
 }
 
+/**
+ * `no-cache` on reads is load-bearing, not defensive. The SDK tags each
+ * operation with its own `x-id`, so a write goes to `…/key?x-id=PutObject`
+ * while a read goes to `…/key?x-id=GetObject` — different cache keys, which
+ * means the RFC 9111 §4.4 "an unsafe method invalidates the stored response"
+ * rule never fires between them. Without this, putObjectText's read-after-write
+ * compares the new text against the browser's cached pre-write body and reports
+ * "Save did not stick" on a save that actually landed, and the editor reopens
+ * the pre-save copy.
+ *
+ * It is a real, signed S3 query parameter (`response-cache-control`), so unlike
+ * a `cache: "no-store"` request mode it adds nothing to the CORS preflight. It
+ * only overrides the Cache-Control on *this response* — the object's own stored
+ * Cache-Control, and therefore CDN edge caching, is untouched.
+ */
+const NO_CACHE = "no-cache";
+
 export async function headObject(
 	provider: ProviderConfig,
 	bucket: string,
 	key: string,
 ) {
 	const client = createClient(provider);
-	return client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+	return client.send(
+		new HeadObjectCommand({
+			Bucket: bucket,
+			Key: key,
+			ResponseCacheControl: NO_CACHE,
+		}),
+	);
 }
 
 async function bodyToBlob(
@@ -336,7 +444,13 @@ export async function previewObject(
 	const metadata = await headObject(provider, bucket, key);
 	const client = createClient(provider);
 	const response = await client.send(
-		new GetObjectCommand({ Bucket: bucket, Key: key }),
+		// Same reason as getObjectText: without it the editor reopens the copy the
+		// browser cached before the last save.
+		new GetObjectCommand({
+			Bucket: bucket,
+			Key: key,
+			ResponseCacheControl: NO_CACHE,
+		}),
 	);
 	const contentType = resolveObjectContentType(
 		key,
@@ -347,7 +461,67 @@ export async function previewObject(
 		blobUrl: URL.createObjectURL(blob),
 		contentType,
 		fileName: key.split("/").pop() ?? key,
+		cacheControl: metadata.CacheControl,
 	};
+}
+
+export async function getObjectText(
+	provider: ProviderConfig,
+	bucket: string,
+	key: string,
+) {
+	const client = createClient(provider);
+	const response = await client.send(
+		new GetObjectCommand({
+			Bucket: bucket,
+			Key: key,
+			ResponseCacheControl: NO_CACHE,
+		}),
+	);
+	return (await response.Body?.transformToString()) ?? "";
+}
+
+export async function putObjectText(
+	provider: ProviderConfig,
+	bucket: string,
+	key: string,
+	text: string,
+	contentType?: string,
+	cacheControl?: string,
+) {
+	const client = createClient(provider);
+	// A PutObject overwrite replaces *all* metadata, so carry the existing
+	// headers forward instead of silently stripping them. ContentEncoding is
+	// deliberately dropped: the browser already decoded the body on read.
+	const existing = await headObject(provider, bucket, key).catch(
+		() => undefined,
+	);
+	await client.send(
+		new PutObjectCommand({
+			Bucket: bucket,
+			Key: key,
+			Body: text,
+			ContentType:
+				contentType || existing?.ContentType || resolveObjectContentType(key),
+			// An explicit value wins so the save dialog can change caching; falling
+			// back to the existing header keeps an untouched object untouched.
+			CacheControl: cacheControl || existing?.CacheControl,
+			ContentDisposition: existing?.ContentDisposition,
+			ContentLanguage: existing?.ContentLanguage,
+			Metadata: existing?.Metadata,
+		}),
+	);
+
+	// Read-after-write: a 200 from PutObject is not proof the bytes a reader
+	// gets back are the ones we sent. This catches silent write-through
+	// failures, stale caches, and permission oddities at the one place that
+	// matters — before the UI claims the save landed.
+	const written = await getObjectText(provider, bucket, key);
+	if (written !== text) {
+		throw new Error(
+			"Save did not stick: the object read back different content. Check write permissions on the bucket and whether a CDN or proxy sits in front of this endpoint.",
+		);
+	}
 }
 
 export async function downloadObject(
@@ -359,7 +533,13 @@ export async function downloadObject(
 	const metadata = await headObject(provider, bucket, key);
 	const client = createClient(provider);
 	const response = await client.send(
-		new GetObjectCommand({ Bucket: bucket, Key: key }),
+		// A download must be the object as it is now, not the copy the browser
+		// kept from the last preview.
+		new GetObjectCommand({
+			Bucket: bucket,
+			Key: key,
+			ResponseCacheControl: NO_CACHE,
+		}),
 	);
 	const total = metadata.ContentLength;
 	const contentType = resolveObjectContentType(
@@ -386,6 +566,7 @@ export async function uploadObject(
 	file: File,
 	contentTypeOverride?: string,
 	onProgress?: (loaded: number, total?: number) => void,
+	cacheControl?: string,
 ) {
 	const client = createClient(provider);
 	const uploader = new Upload({
@@ -396,6 +577,10 @@ export async function uploadObject(
 			Body: file,
 			ContentType:
 				contentTypeOverride || file.type || resolveObjectContentType(key),
+			// Without this an uploaded object has no Cache-Control at all, and the
+			// CDN falls back to re-fetching from the bucket on its own schedule —
+			// which is what shows up on the bill.
+			CacheControl: cacheControl || suggestCacheControl(key),
 		},
 		partSize: 8 * 1024 * 1024,
 		queueSize: 3,
