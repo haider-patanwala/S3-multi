@@ -39,5 +39,58 @@ assert.deepEqual(
 	[],
 	"blank text is not an error",
 );
+// Markdown is deliberately not linted — see lintText.
+assert.deepEqual(await lintText("# ok\n\n<div><p>", "markdown"), []);
+
+// --- HTML -----------------------------------------------------------------
+// The whole reason htmlhint is here: Prettier, lezer and parse5 were all
+// measured and none of them report these three.
+const strayClose = "<div>hi</span></div>";
+const [stray] = await lintText(strayClose, "html");
+assert.ok(stray, "a close tag with no open tag must report");
+assert.equal(strayClose.slice(stray.from, stray.to), "</span>");
+
+const [unclosed] = await lintText("<html><body><div>hi</body></html>", "html");
+assert.ok(unclosed, "an unclosed <div> must report");
+assert.match(unclosed.message, /paired/i);
+
+// Multi-line: the offset must follow the line, not restart at 0.
+const multi = "<div>\n  hi</span>\n</div>";
+const [onLineTwo] = await lintText(multi, "html");
+assert.equal(multi.slice(onLineTwo.from, onLineTwo.to), "</span>");
+
+// htmlhint reports every error, unlike Prettier which stops at the first.
+assert.ok(
+	(await lintText("<p>a</b>\n<div>b</i>", "html")).length >= 2,
+	"multiple HTML errors must all be reported",
+);
+
+// No false positives on correct HTML5 — void elements, unquoted attributes and
+// bare fragments are all legal and must stay quiet, or the lens is noise.
+assert.deepEqual(
+	await lintText(
+		'<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body><p>Hi<br>there</p><img src=x alt=y></body></html>',
+		"html",
+	),
+	[],
+	"valid HTML5 must not report",
+);
+assert.deepEqual(
+	await lintText("<p>just a <b>fragment</b></p>", "html"),
+	[],
+	"a fragment with no doctype is not an error",
+);
+
+// Every diagnostic must be a usable range, or CodeMirror draws nothing.
+for (const lang of ["html", "json", "yaml"] as const) {
+	const source =
+		lang === "html" ? multi : lang === "json" ? '{"a":,}' : "a: [1,\n";
+	for (const issue of await lintText(source, lang)) {
+		assert.ok(
+			issue.from >= 0 && issue.from < issue.to && issue.to <= source.length,
+			`${lang}: bad range ${issue.from}..${issue.to} of ${source.length}`,
+		);
+	}
+}
 
 console.log("richtext.check.ts: ok");

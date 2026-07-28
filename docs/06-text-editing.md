@@ -90,23 +90,54 @@ document; echoing its own output back would reset the cursor on every keystroke.
 
 ### Diagnostics — the error lens
 
-`lintText(text, lang)` in `src/lib/richtext.ts`. **Prettier's parser is the
-linter.** There is no language server and no second parser: Prettier already
-parses every language this app edits, so "it does not format" and "it does not
-parse" are the same question, and the answer is already a dependency.
+`lintText(text, lang)` in `src/lib/richtext.ts`. No language server; two
+checkers, each chosen because it answers the question an editor actually asks.
 
-A failure is normalised to a document offset — Prettier reports `cause.index`
-(babel), `loc.start.offset` (yaml), or only line/column, so all three are
-converted. CodeMirror renders it as a wavy underline on the offending token plus
-a gutter marker; the page header shows a red badge, and the save dialog shows the
-message.
+| Lang | Checker | Reports |
+|---|---|---|
+| `json`, `yaml` | Prettier (already a dependency) | first parse error |
+| `html` | `htmlhint`, dynamically imported | every error |
+| `markdown`, `text` | none | — |
+
+**JSON and YAML: the syntax check is the formatter.** Prettier already parses
+both, so "it does not format" and "it does not parse" are the same question and
+the answer costs nothing new.
+
+**HTML needed its own checker, and the obvious candidates were measured and
+rejected** — this is the part to not re-litigate from first principles:
+
+| Candidate | Why not |
+|---|---|
+| Prettier `html` parser | Error-tolerant. Silent on `<div><p>hi</div>` and on a stray `</span>`. |
+| lezer (`@codemirror/lang-html`, already installed) | Same. Error nodes only for an unterminated attribute string. |
+| `parse5` | Reports HTML5 *spec* parse errors — a different question. Fires `missing-doctype` on every fragment, and still says nothing about an unclosed `<div>`, because the spec tolerates one. |
+| `html-validate` | A whole rule engine. Far too heavy for one lens. |
+
+`htmlhint` catches unclosed tags, stray close tags and duplicate ids with exact
+positions, stays silent on valid HTML5 (void elements, unquoted attributes, bare
+fragments), and is a 12.6 kB gzipped chunk loaded only when an HTML file opens.
+
+Its **default ruleset is not used**: that carries style opinions (lowercase tag
+names, double-quoted attributes, doctype required, `<title>` required) which
+would light up correct files pulled out of a bucket. `HTML_RULES` is syntax
+only.
+
+Every checker's position is normalised to a document offset. Prettier reports
+`cause.index` (babel), `loc.start.offset` (yaml) or only line/column; htmlhint
+reports 1-based line/column plus the offending `raw` text. `clampStart` keeps
+every range at least one character wide — **a parse failure at EOF produces a
+zero-width range, and CodeMirror draws nothing for it**, so the error would be
+invisible. `richtext.check.ts` covers this.
+
+CodeMirror renders a diagnostic as a wavy underline on the offending token plus
+a gutter marker with the message on hover; the page header shows a red badge and
+the save dialog lists the messages. The squiggle is
+`text-decoration: underline wavy` rather than CodeMirror's stock SVG background
+image — drawn by the text engine, so it stays crisp at any zoom and tracks the
+font. `text-decoration-skip-ink: none` keeps it continuous under descenders.
 
 A syntax error **never blocks a save**. Sometimes the point of an edit is to
 hand-fix a file the parser hates. It must never be invisible either.
-
-Ceiling: Prettier's `html` and `markdown` parsers are lenient and accept
-malformed input, so in practice this reports errors for `json` and `yaml`.
-`src/lib/richtext.check.ts` covers the offset normalisation.
 
 ## Language detection and formatting
 
@@ -116,11 +147,15 @@ second: buckets are full of JSON and Markdown stored as
 
 | Lang | Preview tab | Formatter | Diagnostics |
 |---|---|---|---|
-| `markdown` | `marked` → `DOMPurify.sanitize` → `.markdown-body` | Prettier `markdown` | lenient parser — rarely fires |
-| `html` | `<iframe sandbox="" srcDoc>` | Prettier `html` | lenient parser — rarely fires |
-| `json` | source as-is | Prettier `babel` + `estree` | yes |
-| `yaml` | source as-is | Prettier `yaml` | yes |
+| `markdown` | `marked` → `DOMPurify.sanitize` → `.markdown-body` | Prettier `markdown` | none |
+| `html` | `<iframe sandbox="" srcDoc>` | Prettier `html` | htmlhint |
+| `json` | source as-is | Prettier `babel` + `estree` | Prettier |
+| `yaml` | source as-is | Prettier `yaml` | Prettier |
 | `text` | source as-is | none — no Format button | none |
+
+Markdown is deliberately **not** linted: Prettier's markdown parser accepts
+anything, so linting it would load a 270 kB plugin on every keystroke to always
+return `[]`.
 
 ### Prettier loading
 
@@ -288,9 +323,10 @@ counter-theory and stayed wrong for longer.
 - No large-file strategy: whole file in memory, whole file rewritten on save,
   and CodeMirror gets the entire document.
 - No conflict detection. A stale `If-Match: ETag` precondition would be the fix.
-- Diagnostics are Prettier parse failures, not a language server: one error at a
-  time (the first the parser hits), no semantic checks, no JSON Schema, and
-  effectively nothing for HTML and Markdown.
+- Diagnostics are syntax only, not a language server. JSON and YAML report one
+  error at a time (Prettier stops at the first); HTML reports all of them. No
+  semantic checks anywhere: no JSON Schema, no "does this `href` resolve", no
+  cross-file anything. Markdown and plain text get nothing.
 - No formatter for XML or CSS — `detectTextLang` returns `text`, so they are
   editable, highlight-free and not formattable.
 - `.md` files *preview* only CommonMark + GFM as `marked` implements it: no
@@ -299,9 +335,12 @@ counter-theory and stayed wrong for longer.
 
 ## Runnable checks
 
-`node src/lib/richtext.check.ts` covers language detection and the diagnostic
-offset normalisation. `node src/lib/cdn.check.ts` covers the purge-target logic
-the save path depends on.
+`node src/lib/richtext.check.ts` covers language detection, the diagnostic offset
+normalisation for all three parsers, that every range is at least one character
+wide, and — the case that matters most — that **valid** HTML5 and bare fragments
+report nothing. A lens with false positives is worse than no lens.
+`node src/lib/cdn.check.ts` covers the purge-target logic the save path depends
+on.
 
 Not covered, and needing a browser plus a scratch bucket: the S3 round trip, and
 the Tiptap Markdown round trip (open a `.md` file with lists, code fences and

@@ -320,8 +320,11 @@ function EditPage() {
 				</div>
 				<Badge variant="secondary">{lang}</Badge>
 				{issues.length > 0 ? (
-					<Badge title={issues[0].message} variant="destructive">
-						{issues.length} syntax error
+					<Badge
+						title={issues.map((issue) => issue.message).join("\n")}
+						variant="destructive"
+					>
+						{issues.length} syntax error{issues.length > 1 ? "s" : ""}
 					</Badge>
 				) : null}
 				{dirty ? <Badge variant="outline">Unsaved</Badge> : null}
@@ -436,9 +439,18 @@ function EditPage() {
 					{issues.length > 0 ? (
 						<Alert variant="destructive">
 							<HugeiconsIcon icon={Alert01Icon} size={16} strokeWidth={1.5} />
-							<AlertDescription>
-								{issues[0].message} — saving anyway will store a file that does
-								not parse.
+							<AlertDescription className="flex flex-col gap-1">
+								<span>
+									Saving anyway will store a file that does not parse:
+								</span>
+								{issues.slice(0, 5).map((issue) => (
+									<span key={`${issue.from}-${issue.message}`}>
+										{issue.message}
+									</span>
+								))}
+								{issues.length > 5 ? (
+									<span>…and {issues.length - 5} more.</span>
+								) : null}
 							</AlertDescription>
 						</Alert>
 					) : null}

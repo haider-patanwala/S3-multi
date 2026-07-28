@@ -106,12 +106,30 @@ export async function formatTextOrKeep(text: string, lang: TextLang) {
 
 export type Diagnostic = { from: number; to: number; message: string };
 
+/**
+ * Every diagnostic has to underline at least one character. A parser that fails
+ * on an unterminated construct reports at EOF, and a range starting there is
+ * zero-width — CodeMirror renders nothing, so the error is invisible.
+ */
+function clampStart(text: string, offset: number) {
+	return Math.max(0, Math.min(offset, text.length - 1));
+}
+
+/** 1-based line/column (how every parser here reports) → document offset. */
+function offsetOfLineCol(text: string, line: number, column: number) {
+	const lines = text.split("\n");
+	let offset = 0;
+	for (let i = 0; i < line - 1 && i < lines.length; i += 1) {
+		offset += lines[i].length + 1;
+	}
+	return offset + Math.max(0, column - 1);
+}
+
 /** Prettier reports `cause.index` (babel), `loc.start.offset` (yaml), or only
  * line/column. Normalise all three to a document offset. */
 function offsetOfError(text: string, error: unknown): number {
 	const loc = (
 		error as {
-			cause?: { index?: number };
 			loc?: { start?: { line?: number; column?: number; offset?: number } };
 		}
 	)?.loc?.start;
@@ -125,34 +143,25 @@ function offsetOfError(text: string, error: unknown): number {
 	if (typeof loc?.line !== "number") {
 		return 0;
 	}
-	const lines = text.split("\n");
-	let offset = 0;
-	for (let i = 0; i < loc.line - 1 && i < lines.length; i += 1) {
-		offset += lines[i].length + 1;
-	}
-	return offset + Math.max(0, (loc.column ?? 1) - 1);
+	return offsetOfLineCol(text, loc.line, loc.column ?? 1);
 }
 
 /**
- * The syntax check *is* the formatter: Prettier already parses every language
- * this app edits, so "it does not format" and "it does not parse" are the same
- * question. No second parser, no language server.
- *
- * Ceiling: Prettier's `html` and `markdown` parsers are lenient and accept
- * malformed input, so in practice this reports errors for `json` and `yaml`.
+ * JSON and YAML: the syntax check *is* the formatter. Prettier already parses
+ * both, so "it does not format" and "it does not parse" are the same question,
+ * and the answer is already a dependency. It stops at the first error.
  */
-export async function lintText(
+async function lintWithPrettier(
 	text: string,
 	lang: TextLang,
 ): Promise<Diagnostic[]> {
-	if (!(formatterByLang[lang] && text.trim())) {
-		return [];
-	}
 	try {
 		await formatText(text, lang);
 		return [];
 	} catch (error) {
-		const from = Math.min(offsetOfError(text, error), text.length);
+		// Clamped to the last character, not past it: an unterminated construct
+		// reports at EOF, and a zero-width range draws no underline at all.
+		const from = clampStart(text, offsetOfError(text, error));
 		return [
 			{
 				from,
@@ -162,6 +171,94 @@ export async function lintText(
 			},
 		];
 	}
+}
+
+/**
+ * HTML needs its own checker, and the obvious candidates were measured and
+ * rejected:
+ *
+ * - Prettier's `html` parser and lezer (`@codemirror/lang-html`) are both
+ *   error-tolerant by design. Neither reports an unclosed `<p>` or a stray
+ *   `</span>` at all.
+ * - `parse5` reports HTML5 *spec* parse errors, which is a different question:
+ *   it fires `missing-doctype` on every fragment and still says nothing about
+ *   an unclosed `<div>`, because the spec tolerates one.
+ *
+ * htmlhint answers the question an editor actually asks — is this markup
+ * balanced and well-formed — and reports every error, not just the first.
+ *
+ * The rule list is syntax only. htmlhint's default ruleset also carries style
+ * opinions (lowercase tag names, double-quoted attributes, doctype required,
+ * `<title>` required) that would light up correct files pulled out of a bucket.
+ */
+const HTML_RULES = {
+	"tag-pair": true,
+	"tagname-specialchars": true,
+	"empty-tag-not-self-closed": false,
+	"spec-char-escape": true,
+	"id-unique": true,
+	"attr-no-duplication": true,
+	"attr-no-unnecessary-whitespace": false,
+	"src-not-empty": true,
+};
+
+async function lintHtml(text: string): Promise<Diagnostic[]> {
+	// Loaded on demand, like Prettier: most sessions never open an HTML file.
+	// htmlhint is CJS with no `exports` map, so Vite's interop hands back a named
+	// export while node's ESM loader hands back `default`. Take either — this
+	// module has to run in the app *and* under `node richtext.check.ts`.
+	// Types are declared in src/htmlhint.d.ts; the package ships none.
+	const loaded = await import("htmlhint");
+	const HTMLHint = loaded.HTMLHint ?? loaded.default?.HTMLHint;
+	if (!HTMLHint) {
+		return [];
+	}
+	return HTMLHint.verify(text, HTML_RULES).map((message) => {
+		const from = clampStart(
+			text,
+			offsetOfLineCol(text, message.line, message.col),
+		);
+		// `raw` is the offending markup, but for "missing close tag" htmlhint
+		// anchors at the *unclosed* tag while `raw` holds the tag that exposed the
+		// problem. Underline it only when it is really there, else to end of line.
+		const lineEnd = text.indexOf("\n", from);
+		const to = text.startsWith(message.raw ?? "", from)
+			? from + (message.raw?.length ?? 1)
+			: lineEnd === -1
+				? text.length
+				: lineEnd;
+		return {
+			from,
+			to: Math.max(from + 1, Math.min(to, text.length)),
+			message: message.message,
+		};
+	});
+}
+
+/**
+ * Syntax diagnostics for the editor's error lens. No language server: two
+ * parsers that are already needed for other reasons, used for the one question
+ * an editor has to answer.
+ *
+ * Ceiling: nothing for Markdown or plain text, and no semantic checks anywhere
+ * (no JSON Schema, no "does this href resolve").
+ */
+export async function lintText(
+	text: string,
+	lang: TextLang,
+): Promise<Diagnostic[]> {
+	if (!text.trim()) {
+		return [];
+	}
+	if (lang === "html") {
+		return await lintHtml(text);
+	}
+	// Markdown deliberately excluded: Prettier's markdown parser accepts
+	// anything, so linting it would load a 270 kB plugin to always return [].
+	if (lang === "json" || lang === "yaml") {
+		return await lintWithPrettier(text, lang);
+	}
+	return [];
 }
 
 export function renderMarkdown(text: string) {

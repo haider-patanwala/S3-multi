@@ -27,10 +27,16 @@ pnpm lint:error && npx tsc --noEmit && node src/lib/cdn.check.ts && node src/lib
 `cdn.check.ts` shells out to `/bin/sh` to verify the purge command's quoting
 survives a real shell. It runs no network calls and nothing destructive.
 
-`richtext.check.ts` asserts against Prettier's *real* thrown errors rather than
-an assumed shape — the three parsers report a position three different ways
-(`cause.index`, `loc.start.offset`, line/column), and an off-by-one there puts
-the editor's error underline on the wrong character.
+`richtext.check.ts` asserts against the linters' *real* output rather than an
+assumed shape — the parsers report a position three different ways
+(`cause.index`, `loc.start.offset`, 1-based line/column), and an off-by-one there
+puts the editor's error underline on the wrong character. It also pins the
+no-false-positives cases for HTML, which is the property that makes the error
+lens trustworthy.
+
+Choosing an HTML checker by reputation rather than measurement would have picked
+`parse5` and shipped a lens that flags every fragment and misses every unclosed
+tag. See [text-editing](06-text-editing.md) § Diagnostics for the comparison.
 
 Biome (`biome.jsonc`) enforces tab indent, sorted imports, and sorted JSX props.
 It will rewrite files on `--write`, so run it before reading a file you just

@@ -85,15 +85,29 @@ rich form. Those get the code editor with syntax diagnostics instead.
 
 ### The editor shows no syntax error on a file I know is broken
 
-Diagnostics are Prettier parse failures, and Prettier's `html` and `markdown`
-parsers accept malformed input. In practice only `json` and `yaml` report. There
-is no language server. See [text-editing](06-text-editing.md) § Diagnostics.
+Diagnostics are **syntax** only — JSON/YAML via Prettier, HTML via htmlhint,
+nothing for Markdown or plain text. There is no language server, so a valid file
+that is *wrong* (bad schema, dead link, unknown key) reports nothing by design.
 
-### The error underline is on the wrong character
+If it is genuinely malformed HTML and nothing fires, check the rule list:
+`HTML_RULES` in `src/lib/richtext.ts` is a syntax-only subset, and htmlhint's
+style rules are switched off on purpose. See
+[text-editing](06-text-editing.md) § Diagnostics.
 
-The offset normalisation in `lintText` — Prettier reports a position three
-different ways depending on the parser. `node src/lib/richtext.check.ts` is the
-regression check; add the failing case to it.
+### The editor flags valid HTML
+
+A regression in the rule list — a style rule got switched on, or the default
+ruleset is being used instead of `HTML_RULES`. Void elements (`<br>`, `<img>`),
+unquoted attributes, missing doctype and bare fragments are all legal and must
+stay quiet. `richtext.check.ts` asserts exactly this; run it.
+
+### The error underline is on the wrong character, or missing entirely
+
+The offset normalisation in `lintText`. The three parsers report a position three
+different ways (`cause.index`, `loc.start.offset`, 1-based line/column), and a
+range that ends where it starts draws **nothing** — which is why `clampStart`
+exists, and why an error reported at EOF was invisible before it did.
+`node src/lib/richtext.check.ts` is the regression check; add the failing case.
 
 ### The editor opens with the file already modified
 
