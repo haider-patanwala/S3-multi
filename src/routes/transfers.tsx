@@ -1,5 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { formatBytes, formatTimestamp } from "@/lib/utils";
 import { transferQueryOptions } from "../lib/query-options";
 import {
@@ -11,6 +15,17 @@ import {
 export const Route = createFileRoute("/transfers")({
 	component: TransfersPage,
 });
+
+function Stat({ value, label }: { value: number; label: string }) {
+	return (
+		<span className="flex items-baseline gap-1.5 text-muted-foreground text-sm">
+			<span className="font-semibold text-foreground text-lg tabular-nums">
+				{value}
+			</span>
+			{label}
+		</span>
+	);
+}
 
 function TransfersPage() {
 	const queryClient = useQueryClient();
@@ -49,106 +64,101 @@ function TransfersPage() {
 
 	return (
 		<div className="space-y-4">
-			<div className="stat-strip">
-				<div className="stat-strip-group">
-					<span className="stat-strip-item">
-						<span className="stat-strip-value">{runningCount}</span>
-						running
-					</span>
-					<span className="stat-strip-item">
-						<span className="stat-strip-value">{completedCount}</span>
-						completed
-					</span>
-					<span className="stat-strip-item">
-						<span
-							className={
-								failedCount
-									? "stat-strip-value stat-strip-value-alert"
-									: "stat-strip-value stat-strip-value-quiet"
-							}
+			<Card>
+				<CardContent className="flex flex-wrap items-center justify-between gap-4">
+					<div className="flex flex-wrap items-center gap-5">
+						<Stat label="running" value={runningCount} />
+						<Stat label="completed" value={completedCount} />
+						<Stat label="failed" value={failedCount} />
+					</div>
+					<div className="flex flex-wrap gap-2">
+						<Button
+							disabled={!completedCount}
+							onClick={() => clearCompletedMutation.mutate()}
+							size="sm"
+							type="button"
+							variant="outline"
 						>
-							{failedCount}
-						</span>
-						failed
-					</span>
-				</div>
-				<div className="flex flex-wrap gap-2">
-					<button
-						className="button-quiet"
-						disabled={!completedCount}
-						onClick={() => clearCompletedMutation.mutate()}
-						type="button"
-					>
-						Clear completed
-					</button>
-					<button
-						className="button-quiet"
-						disabled={!transfers.length}
-						onClick={() => clearAllMutation.mutate()}
-						type="button"
-					>
-						Clear all
-					</button>
-				</div>
-			</div>
+							Clear completed
+						</Button>
+						<Button
+							disabled={!transfers.length}
+							onClick={() => clearAllMutation.mutate()}
+							size="sm"
+							type="button"
+							variant="outline"
+						>
+							Clear all
+						</Button>
+					</div>
+				</CardContent>
+			</Card>
 
-			<section className="control-panel px-5 py-5 lg:px-6">
-				{transfers.length ? (
-					<div className="space-y-3">
-						{transfers.map((transfer) => {
-							const progress = transfer.totalBytes
-								? Math.min(
-										100,
-										(transfer.transferredBytes / transfer.totalBytes) * 100,
-									)
-								: transfer.status === "completed"
-									? 100
-									: 18;
-							return (
-								<div className="transfer-row" key={transfer.id}>
-									<div className="transfer-row-top">
+			{transfers.length ? (
+				<div className="space-y-3">
+					{transfers.map((transfer) => {
+						const progress = transfer.totalBytes
+							? Math.min(
+									100,
+									(transfer.transferredBytes / transfer.totalBytes) * 100,
+								)
+							: transfer.status === "completed"
+								? 100
+								: 18;
+						return (
+							<Card key={transfer.id}>
+								<CardContent className="space-y-3">
+									<div className="flex flex-wrap items-start justify-between gap-3">
 										<div className="min-w-0">
-											<div className="transfer-row-title">
+											<div className="truncate font-medium text-sm">
 												{transfer.fileName}
 											</div>
-											<div className="mt-2 flex flex-wrap gap-2">
-												<span className="pill">{transfer.kind}</span>
-												<span className="pill">{transfer.status}</span>
-												{transfer.resumeSupported ? (
-													<span className="pill pill-active">
-														Resume supported
-													</span>
-												) : (
-													<span className="pill">Retry only</span>
-												)}
+											<div className="mt-2 flex flex-wrap gap-1.5">
+												<Badge variant="secondary">{transfer.kind}</Badge>
+												<Badge
+													variant={
+														transfer.status === "failed"
+															? "destructive"
+															: transfer.status === "completed"
+																? "default"
+																: "secondary"
+													}
+												>
+													{transfer.status}
+												</Badge>
+												<Badge variant="outline">
+													{transfer.resumeSupported
+														? "Resume supported"
+														: "Retry only"}
+												</Badge>
 											</div>
-											<div className="transfer-row-path">
+											<div className="mt-2 truncate font-mono text-muted-foreground text-xs">
 												{transfer.bucket} / {transfer.key}
 											</div>
 										</div>
-										<div className="flex flex-wrap gap-3">
-											<button
-												className="button-secondary"
-												onClick={() => dismissMutation.mutate(transfer.id)}
-												type="button"
-											>
-												Dismiss
-											</button>
-										</div>
+										<Button
+											onClick={() => dismissMutation.mutate(transfer.id)}
+											size="sm"
+											type="button"
+											variant="outline"
+										>
+											Dismiss
+										</Button>
 									</div>
-									<div className="transfer-track mt-4">
-										<div
-											className="transfer-track-bar"
-											style={{ width: `${progress}%` }}
-										/>
-									</div>
-									<div className="transfer-row-meta">
+
+									<Progress value={progress} />
+
+									<div className="grid gap-1 text-muted-foreground text-xs sm:grid-cols-2 lg:grid-cols-4">
 										<div>
 											{formatBytes(transfer.transferredBytes)} /{" "}
 											{formatBytes(transfer.totalBytes)}
 										</div>
 										<div>Updated {formatTimestamp(transfer.updatedAt)}</div>
-										<div>
+										<div
+											className={
+												transfer.errorMessage ? "text-destructive" : ""
+											}
+										>
 											{transfer.errorMessage
 												? `Error: ${transfer.errorMessage}`
 												: "No errors"}
@@ -159,17 +169,19 @@ function TransfersPage() {
 												: "Resume unavailable, retry restarts"}
 										</div>
 									</div>
-								</div>
-							);
-						})}
-					</div>
-				) : (
-					<div className="empty-state">
+								</CardContent>
+							</Card>
+						);
+					})}
+				</div>
+			) : (
+				<Card>
+					<CardContent className="py-12 text-center text-muted-foreground text-sm">
 						No persisted transfers yet. Start an upload or download from the
 						browser to populate this ledger.
-					</div>
-				)}
-			</section>
+					</CardContent>
+				</Card>
+			)}
 		</div>
 	);
 }

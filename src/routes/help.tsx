@@ -1,4 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
 
 export const Route = createFileRoute("/help")({
 	component: HelpPage,
@@ -14,19 +22,21 @@ function Section({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="control-panel guide-section">
-			<div className="section-label">{label}</div>
-			<h3 className="page-subtitle" style={{ marginTop: "0.4rem" }}>
-				{title}
-			</h3>
-			{children}
-		</div>
+		<Card>
+			<CardHeader>
+				<CardDescription className="font-medium text-xs uppercase tracking-wider">
+					{label}
+				</CardDescription>
+				<CardTitle>{title}</CardTitle>
+			</CardHeader>
+			<CardContent className="space-y-3">{children}</CardContent>
+		</Card>
 	);
 }
 
 function Code({ children }: { children: string }) {
 	return (
-		<pre className="guide-code">
+		<pre className="overflow-auto rounded-md border bg-muted p-3 font-mono text-muted-foreground text-xs leading-relaxed">
 			<code>{children}</code>
 		</pre>
 	);
@@ -42,26 +52,30 @@ function Step({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="guide-step">
-			<div className="guide-step-number">{n}</div>
+		<div className="flex gap-3">
+			<div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary font-medium text-primary-foreground text-xs">
+				{n}
+			</div>
 			<div>
-				<strong style={{ color: "var(--text)" }}>{title}</strong>
-				<div className="page-copy" style={{ marginTop: "0.25rem" }}>
-					{children}
-				</div>
+				<strong className="font-medium text-sm">{title}</strong>
+				<div className="mt-1 text-muted-foreground text-sm">{children}</div>
 			</div>
 		</div>
 	);
 }
 
 function Note({ children }: { children: React.ReactNode }) {
-	return <div className="guide-note">{children}</div>;
+	return (
+		<Alert>
+			<AlertDescription>{children}</AlertDescription>
+		</Alert>
+	);
 }
 
 function HelpPage() {
 	return (
-		<div style={{ display: "grid", gap: "1rem" }}>
-			<p className="page-copy max-w-3xl">
+		<div className="grid gap-4">
+			<p className="max-w-3xl text-muted-foreground text-sm">
 				S3 Multi manages objects across multiple S3-compatible providers. Every
 				API call goes straight from your browser to the provider — there is no
 				backend.
@@ -69,13 +83,7 @@ function HelpPage() {
 
 			{/* Quick start */}
 			<Section label="Overview" title="Quick start">
-				<div
-					style={{
-						display: "grid",
-						gap: "0.65rem",
-						marginTop: "0.65rem",
-					}}
-				>
+				<div className="grid gap-3">
 					<Step n={1} title="Create a provider">
 						Go to <strong>Providers</strong> and add your S3-compatible
 						credentials (AWS, Cloudflare R2, MinIO, etc.).
@@ -93,13 +101,7 @@ function HelpPage() {
 
 			{/* AWS S3 */}
 			<Section label="Provider setup" title="AWS S3">
-				<div
-					style={{
-						display: "grid",
-						gap: "0.65rem",
-						marginTop: "0.65rem",
-					}}
-				>
+				<div className="grid gap-3">
 					<Step n={1} title="Create an IAM user">
 						In the AWS Console, go to IAM → Users → Create user. Enable
 						programmatic access.
@@ -147,13 +149,7 @@ function HelpPage() {
 
 			{/* Cloudflare R2 */}
 			<Section label="Provider setup" title="Cloudflare R2">
-				<div
-					style={{
-						display: "grid",
-						gap: "0.65rem",
-						marginTop: "0.65rem",
-					}}
-				>
+				<div className="grid gap-3">
 					<Step n={1} title="Create an R2 API token">
 						In the Cloudflare dashboard, go to R2 → Manage R2 API Tokens →
 						Create API Token.
@@ -185,13 +181,7 @@ function HelpPage() {
 
 			{/* Custom / MinIO */}
 			<Section label="Provider setup" title="Custom S3 (MinIO, etc.)">
-				<div
-					style={{
-						display: "grid",
-						gap: "0.65rem",
-						marginTop: "0.65rem",
-					}}
-				>
+				<div className="grid gap-3">
 					<Step n={1} title="Enter endpoint URL">
 						Point to your S3-compatible endpoint, e.g.{" "}
 						<code>https://minio.example.com</code> or{" "}
@@ -216,21 +206,12 @@ function HelpPage() {
 
 			{/* CORS */}
 			<Section label="Configuration" title="CORS configuration">
-				<p className="page-copy" style={{ marginTop: "0.5rem" }}>
+				<p className="text-muted-foreground text-sm">
 					Because this app makes S3 API calls directly from your browser, the
 					storage bucket must allow cross-origin requests (CORS). Without CORS,
 					the browser will block all requests.
 				</p>
-				<h4
-					className="page-copy"
-					style={{
-						marginTop: "1rem",
-						color: "var(--text)",
-						fontWeight: 600,
-					}}
-				>
-					AWS S3 CORS JSON
-				</h4>
+				<h4 className="mt-4 font-medium text-sm">AWS S3 CORS JSON</h4>
 				<Code>
 					{`[
   {
@@ -253,32 +234,14 @@ function HelpPage() {
 					actual domain (e.g. <code>"https://your-app.com"</code>).
 				</Note>
 
-				<h4
-					className="page-copy"
-					style={{
-						marginTop: "1rem",
-						color: "var(--text)",
-						fontWeight: 600,
-					}}
-				>
-					Cloudflare R2
-				</h4>
-				<p className="page-copy" style={{ marginTop: "0.25rem" }}>
+				<h4 className="mt-4 font-medium text-sm">Cloudflare R2</h4>
+				<p className="text-muted-foreground text-sm">
 					Go to R2 → Bucket → Settings → CORS Policy and add the same allowed
 					origins, methods, and headers via the dashboard UI.
 				</p>
 
-				<h4
-					className="page-copy"
-					style={{
-						marginTop: "1rem",
-						color: "var(--text)",
-						fontWeight: 600,
-					}}
-				>
-					MinIO
-				</h4>
-				<p className="page-copy" style={{ marginTop: "0.25rem" }}>
+				<h4 className="mt-4 font-medium text-sm">MinIO</h4>
+				<p className="text-muted-foreground text-sm">
 					Use the <code>mc admin config set</code> command or set the{" "}
 					<code>MINIO_API_CORS_ALLOW_ORIGIN</code> environment variable. The
 					MinIO Console also has a CORS settings page under Settings →
@@ -288,17 +251,17 @@ function HelpPage() {
 
 			{/* CDN cache purging */}
 			<Section label="Configuration" title="Purging the CDN cache">
-				<p className="page-copy" style={{ marginTop: "0.65rem" }}>
+				<p className="text-muted-foreground text-sm">
 					Editing a file updates the bucket immediately, but a CDN in front of
 					that bucket can keep serving the old copy to your visitors until it is
 					purged. How you purge depends on the provider — and the difference is
 					not this app's choice.
 				</p>
 
-				<h4 className="page-subtitle" style={{ marginTop: "1.1rem" }}>
+				<h4 className="mt-4 font-medium text-base">
 					AWS S3 + CloudFront — purges from the app
 				</h4>
-				<p className="page-copy" style={{ marginTop: "0.4rem" }}>
+				<p className="text-muted-foreground text-sm">
 					The CloudFront API allows browser calls (it returns{" "}
 					<code>Access-Control-Allow-Origin: *</code>), so this works in-app
 					with no extra setup. Open a file preview →{" "}
@@ -306,7 +269,7 @@ function HelpPage() {
 					<strong>Save &amp; purge now</strong>. Saving an edited file also
 					purges that file automatically.
 				</p>
-				<p className="page-copy" style={{ marginTop: "0.4rem" }}>
+				<p className="text-muted-foreground text-sm">
 					The access key for this provider needs the{" "}
 					<code>cloudfront:CreateInvalidation</code> IAM permission:
 				</p>
@@ -318,7 +281,7 @@ function HelpPage() {
     "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
   }]
 }`}</Code>
-				<p className="page-copy" style={{ marginTop: "0.4rem" }}>
+				<p className="text-muted-foreground text-sm">
 					The dialog also shows the equivalent AWS CLI command if you would
 					rather not grant that permission to a browser-held key:
 				</p>
@@ -332,10 +295,10 @@ function HelpPage() {
 					— acceptance is not completion, and propagation takes a few minutes.
 				</Note>
 
-				<h4 className="page-subtitle" style={{ marginTop: "1.4rem" }}>
+				<h4 className="mt-4 font-medium text-base">
 					Cloudflare R2 — copy a command, run it yourself
 				</h4>
-				<p className="page-copy" style={{ marginTop: "0.4rem" }}>
+				<p className="text-muted-foreground text-sm">
 					Cloudflare's API cannot be called from a browser. It sends no CORS
 					headers on any endpoint and answers preflight requests with{" "}
 					<code>405</code>, and because the purge request carries an{" "}
@@ -346,12 +309,12 @@ function HelpPage() {
 					deliberate stance: a browser-callable credential API would let any XSS
 					steal your token.
 				</p>
-				<p className="page-copy" style={{ marginTop: "0.4rem" }}>
+				<p className="text-muted-foreground text-sm">
 					So instead of failing, the app builds the exact command for you. Open
 					a file preview → <strong>Purge cache</strong>, fill in the fields,
 					then use <strong>Copy</strong> and paste it into a terminal:
 				</p>
-				<div style={{ display: "grid", gap: "0.65rem", marginTop: "0.65rem" }}>
+				<div className="grid gap-3">
 					<Step n={1} title="Zone ID">
 						Cloudflare dashboard → select your domain → Overview → API panel on
 						the right.
@@ -395,13 +358,7 @@ function HelpPage() {
 
 			{/* Using the app */}
 			<Section label="Guide" title="Using the app">
-				<div
-					style={{
-						display: "grid",
-						gap: "0.65rem",
-						marginTop: "0.65rem",
-					}}
-				>
+				<div className="grid gap-3">
 					<Step n={1} title="Creating & testing a provider">
 						Fill in the provider form and click <strong>Test connection</strong>{" "}
 						to verify your credentials and CORS setup before saving.
@@ -438,36 +395,30 @@ function HelpPage() {
 
 			{/* Security */}
 			<Section label="Security" title="Security notes">
-				<div
-					style={{
-						display: "grid",
-						gap: "0.65rem",
-						marginTop: "0.65rem",
-					}}
-				>
-					<div className="guide-note">
-						<strong style={{ color: "var(--text)" }}>
+				<div className="grid gap-3">
+					<Note>
+						<strong className="font-medium text-foreground">
 							Credentials stay local
 						</strong>
 						<br />
 						Your access keys are encrypted and stored in IndexedDB in your
 						browser. They are never sent to any server.
-					</div>
-					<div className="guide-note">
-						<strong style={{ color: "var(--text)" }}>No backend</strong>
+					</Note>
+					<Note>
+						<strong className="font-medium text-foreground">No backend</strong>
 						<br />
 						All S3 API calls are made directly from your browser to the storage
 						provider. There is no intermediary server.
-					</div>
-					<div className="guide-note">
-						<strong style={{ color: "var(--text)" }}>
+					</Note>
+					<Note>
+						<strong className="font-medium text-foreground">
 							Use scoped IAM policies
 						</strong>
 						<br />
 						For production use, create IAM credentials with the minimum required
 						permissions scoped to specific buckets rather than using full admin
 						access.
-					</div>
+					</Note>
 				</div>
 			</Section>
 		</div>

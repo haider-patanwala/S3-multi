@@ -56,14 +56,50 @@ of going through `putObjectText`.
 ### Save succeeds but end users still see the old file
 
 The CDN edge cache — layer ④. In-app auto-purge only runs for AWS
-(`canPurge(provider)`). For R2 the save reports `"CDN not purged — open Purge
-cache for the command to run."` — run it. See [cdn-purge](07-cdn-purge.md).
+(`canPurge(provider)`). For R2 the save reports `"CDN not purged — copy the
+command from the save dialog and run it."` — run it. See
+[cdn-purge](07-cdn-purge.md).
 
 ### Saved file is truncated or garbled with non-ASCII content
 
 Should not happen: the SDK computes `Content-Length` via
 `TextEncoder().encode(body).byteLength`. If it does, something replaced the string
 body with a manual length calculation.
+
+## Editing
+
+### The rich-text editor reformatted my Markdown
+
+Expected. Rich text is a round trip through a Markdown parser and serialiser, so
+it normalises: `*` bullets become `-`, setext headings become ATX, wrapping is
+redone. Nothing is *lost*, but the diff is larger than the edit.
+
+Use the **Code** tab for byte-exact edits. See
+[text-editing](06-text-editing.md) § Rich text is Markdown-only.
+
+### There is no rich-text tab for my HTML / JSON / YAML file
+
+Deliberate. A ProseMirror schema cannot represent an HTML document — `<head>`,
+attributes and scripts would be dropped on save — and structured data has no
+rich form. Those get the code editor with syntax diagnostics instead.
+
+### The editor shows no syntax error on a file I know is broken
+
+Diagnostics are Prettier parse failures, and Prettier's `html` and `markdown`
+parsers accept malformed input. In practice only `json` and `yaml` report. There
+is no language server. See [text-editing](06-text-editing.md) § Diagnostics.
+
+### The error underline is on the wrong character
+
+The offset normalisation in `lintText` — Prettier reports a position three
+different ways depending on the parser. `node src/lib/richtext.check.ts` is the
+regression check; add the failing case to it.
+
+### The editor opens with the file already modified
+
+Not modified — reformatted. The buffer opens Prettier-formatted while the
+baseline stays the raw bucket bytes, so the dirty state reflects a real
+difference against S3. **Reset** returns the original bytes.
 
 ## Purging
 
@@ -228,22 +264,38 @@ the only reliable check is reading the record back out of IndexedDB.
 
 ### A dialog opened from the preview modal is invisible
 
-Stacking order. The preview modal is `z-40` *below* the shadcn Dialog layer
-(`z-50`) on purpose — the save and purge dialogs are opened from inside it. The
-toast stack (60) and status banner (70) sit above it too, so a save result is not
-hidden behind the modal that produced it. Raising `.preview-modal` above 50
-re-breaks all of this.
+Stacking order. The preview is now a shadcn `Dialog` like every other overlay, and
+Base UI portals mount in the order the dialogs open — so the save and purge
+dialogs, opened from inside the preview, land *after* it in the portal order and
+paint above it. The transfer toasts are `z-60`, above the whole Dialog layer
+(`z-50`), so a running transfer stays visible over an open dialog.
 
-Do not reach for a native `<dialog>` + `showModal()` here either: it joins the top
-layer, which beats every z-index and puts the preview *above* dialogs opened from
-it. That was tried and reverted; `.preview-backdrop` (a real `<button>`) plus a
-`keydown` effect covers click-outside and Escape without the top layer.
+Do not reach for a native `<dialog>` + `showModal()` here: it joins the top layer,
+which beats every z-index and puts the preview *above* dialogs opened from it.
+That was tried and reverted.
 
 ### Dialog content overflows its own box
 
-`DialogContent` is a grid, and a grid item defaults to `min-width: auto`, so a wide
-`<pre>` stretches the track past the dialog instead of scrolling inside it. Add
-`min-w-0` to the flex column wrapping it.
+Two independent causes, and the purge dialog hit both at once.
+
+*Sideways:* `DialogContent` is a grid, and a grid item defaults to
+`min-width: auto`, so a wide `<pre>` stretches the track past the dialog instead
+of scrolling inside it. Add `min-w-0` to the wrapping column — **and** to every
+column between it and the `<pre>`. One missing `min-w-0` anywhere in that chain
+re-opens the whole thing.
+
+*Downwards:* `DialogContent` has no height cap of its own. A dialog that grows
+with its content (a purge command block, a list of notes) runs off the top and
+bottom of the viewport, taking its footer buttons with it, because the popup is
+centred with `top-1/2 -translate-y-1/2`. Add `max-h-[85vh] overflow-y-auto`.
+
+The X button is `absolute` inside that scroll container, so on a long dialog it
+scrolls out of view — which is why every dialog here also has an explicit
+Close/Cancel in its footer.
+
+Prose is what makes a dialog tall in the first place. Long "how to find your API
+token" instructions belong in a `Popover` behind a `?` (`LabelWithHelp` in
+`src/routes/browse.tsx`), not inline.
 
 ## Relations
 

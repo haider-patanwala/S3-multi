@@ -1,6 +1,7 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { extensionForKey } from "./utils";
+// Explicit .ts so `node src/lib/richtext.check.ts` can resolve it.
+import { extensionForKey } from "./utils.ts";
 
 export type TextLang = "json" | "yaml" | "markdown" | "html" | "text";
 
@@ -101,6 +102,66 @@ export async function formatText(text: string, lang: TextLang) {
 /** Best effort: unparseable text is left exactly as it was. */
 export async function formatTextOrKeep(text: string, lang: TextLang) {
 	return await formatText(text, lang).catch(() => text);
+}
+
+export type Diagnostic = { from: number; to: number; message: string };
+
+/** Prettier reports `cause.index` (babel), `loc.start.offset` (yaml), or only
+ * line/column. Normalise all three to a document offset. */
+function offsetOfError(text: string, error: unknown): number {
+	const loc = (
+		error as {
+			cause?: { index?: number };
+			loc?: { start?: { line?: number; column?: number; offset?: number } };
+		}
+	)?.loc?.start;
+	const index = (error as { cause?: { index?: number } })?.cause?.index;
+	if (typeof index === "number") {
+		return index;
+	}
+	if (typeof loc?.offset === "number") {
+		return loc.offset;
+	}
+	if (typeof loc?.line !== "number") {
+		return 0;
+	}
+	const lines = text.split("\n");
+	let offset = 0;
+	for (let i = 0; i < loc.line - 1 && i < lines.length; i += 1) {
+		offset += lines[i].length + 1;
+	}
+	return offset + Math.max(0, (loc.column ?? 1) - 1);
+}
+
+/**
+ * The syntax check *is* the formatter: Prettier already parses every language
+ * this app edits, so "it does not format" and "it does not parse" are the same
+ * question. No second parser, no language server.
+ *
+ * Ceiling: Prettier's `html` and `markdown` parsers are lenient and accept
+ * malformed input, so in practice this reports errors for `json` and `yaml`.
+ */
+export async function lintText(
+	text: string,
+	lang: TextLang,
+): Promise<Diagnostic[]> {
+	if (!(formatterByLang[lang] && text.trim())) {
+		return [];
+	}
+	try {
+		await formatText(text, lang);
+		return [];
+	} catch (error) {
+		const from = Math.min(offsetOfError(text, error), text.length);
+		return [
+			{
+				from,
+				to: Math.min(from + 1, text.length),
+				message:
+					error instanceof Error ? error.message.split("\n")[0] : String(error),
+			},
+		];
+	}
 }
 
 export function renderMarkdown(text: string) {

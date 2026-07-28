@@ -149,8 +149,14 @@ export function extensionLabel(item: Pick<ObjectEntry, "kind" | "key">) {
 	return extension && extension.length <= 5 ? extension : "";
 }
 
+const GLYPH_SIZES = {
+	sm: "size-6 rounded-sm",
+	md: "size-8 rounded-md",
+	lg: "size-11 rounded-lg",
+} as const;
+
 /**
- * Folders carry a manila tint, files a plain paper tile. That is the one place
+ * Folders get the accent tile, files the muted one. That is the one place
  * colour is allowed to differ here, because it encodes the only distinction
  * that changes what a click does: descend, or open.
  */
@@ -173,9 +179,11 @@ export function FileGlyph({
 		<span
 			aria-hidden="true"
 			className={cn(
-				"glyph",
-				`glyph-${size}`,
-				item.kind === "folder" ? "glyph-folder" : "glyph-file",
+				"inline-flex shrink-0 items-center justify-center border",
+				GLYPH_SIZES[size],
+				item.kind === "folder"
+					? "border-primary/20 bg-primary/10 text-foreground"
+					: "bg-muted text-muted-foreground",
 				className,
 			)}
 		>

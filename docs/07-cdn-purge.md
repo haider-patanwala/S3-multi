@@ -176,7 +176,19 @@ stale copy stays cached.
 The purge dialog lives in `/browse` (`purgeOpen` in `src/routes/browse.tsx`) and
 collects, per provider type: CloudFront Distribution ID (AWS), Zone ID + API Token
 (R2), and Public CDN URL (both). Below the fields it renders the generated
-command(s) with a Copy button, the scope line, and any notes.
+command(s) with a Copy button and the scope line. `notes` (the "you left this
+field blank" warnings) stay hidden until the operator acts — Copy, Save settings,
+or Save & purge now flips `purgeNotesShown`; closing the dialog resets it. On an
+untouched form they read as errors the user caused.
+
+"Where do I find this?" prose sits in a `Popover` behind the `?` next to each
+label (`LabelWithHelp` in `src/routes/browse.tsx`), not inline. Printed inline it
+made the R2 branch — two credential fields, a URL field and two multi-line curl
+commands — taller than the viewport. The dialog is capped at `max-h-[85vh]` and
+scrolls; its `<form>` and every column inside carry `min-w-0`, or the wide `<pre>`
+stretches the DialogContent grid track instead of scrolling within it. Adding
+another paragraph of instructions to this dialog re-creates both problems: put it
+in a popover.
 
 `purgeMutation` takes `{ purge?: boolean }`. Saving settings and purging are now
 separate acts — R2 can never purge in-app, so **Save settings** has to stand on

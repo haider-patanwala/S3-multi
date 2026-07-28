@@ -61,9 +61,16 @@ search-param update.
 
 ## Rendering
 
-`@tanstack/react-virtual` virtualizes list rows (`estimateSize: 82`,
+`@tanstack/react-virtual` virtualizes list rows (`estimateSize: 56`,
 `overscan: 8`) against the scroll container in `parentRef`. Grid view is not
 virtualized.
+
+`estimateSize` must match the row's real height: `EntryRow` is `h-14` (56px). The
+two are not linked by anything but this line — change the class and rows overlap
+or leave gaps. The row's column track (`ENTRY_GRID` in `src/routes/browse.tsx`)
+is shared with the header above the scroll container, and drops its three middle
+columns below 900px; both halves must change together or the header stops lining
+up with the rows.
 
 Search input is wrapped in `useDeferredValue`, so typing does not block the list;
 the deferred value is part of the query key, so each settled term is cached

@@ -10,6 +10,7 @@ import {
 	FolderAddIcon,
 	FolderOpenIcon,
 	GridViewIcon,
+	HelpCircleIcon,
 	LeftToRightListBulletIcon,
 	MoreHorizontalIcon,
 	PencilIcon,
@@ -23,6 +24,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
 	type DragEvent,
 	Fragment,
+	type ReactNode,
 	startTransition,
 	useCallback,
 	useDeferredValue,
@@ -33,7 +35,20 @@ import {
 } from "react";
 import { z } from "zod";
 import { extensionLabel, FileGlyph } from "../components/file-glyph";
-import { Button } from "../components/ui/button";
+import { CODE_BLOCK } from "../components/rich-text-viewer";
+import { Alert, AlertAction, AlertDescription } from "../components/ui/alert";
+import { Badge } from "../components/ui/badge";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "../components/ui/breadcrumb";
+import { Button, buttonVariants } from "../components/ui/button";
+import { Card, CardContent } from "../components/ui/card";
+import { Checkbox } from "../components/ui/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -51,25 +66,26 @@ import {
 } from "../components/ui/dropdown-menu";
 import { Input } from "../components/ui/input";
 import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "../components/ui/input-group";
+import { Label } from "../components/ui/label";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "../components/ui/popover";
+import { Progress } from "../components/ui/progress";
+import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
 } from "../components/ui/select";
-import { Textarea } from "../components/ui/textarea";
-import {
-	CACHE_PRESETS,
-	describeCacheControl,
-	isCached,
-	suggestCacheControl,
-} from "../lib/cache-control";
-import {
-	buildPurgeCommand,
-	canPurge,
-	type PurgeCommand,
-	purgeCache,
-} from "../lib/cdn";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
+import { buildPurgeCommand, type PurgeCommand, purgeCache } from "../lib/cdn";
 import {
 	getActiveProviderId,
 	saveProvider,
@@ -84,20 +100,11 @@ import {
 	transferQueryOptions,
 } from "../lib/query-options";
 import {
-	canFormat,
-	detectTextLang,
-	formatText,
-	formatTextOrKeep,
-	renderMarkdown,
-	type TextLang,
-} from "../lib/richtext";
-import {
 	buildObjectUrl,
 	createFolder,
 	deleteKeys,
 	downloadObject,
 	previewObject,
-	putObjectText,
 	renameKey,
 	resolveObjectContentType,
 	uploadObject,
@@ -125,6 +132,19 @@ const searchSchema = z.object({
 });
 
 const emptyCaptionsTrack = "data:text/vtt;charset=utf-8,WEBVTT%0A%0A";
+
+/** Section heading above a group of controls. */
+const SECTION_LABEL =
+	"font-medium text-muted-foreground text-xs uppercase tracking-wider";
+
+/**
+ * One row of the list view: check · glyph · name · ext · size · modified ·
+ * actions. Below 900px the three middle columns are dropped (see HIDE_SM) and
+ * the track list shrinks to match, so the header and the rows stay aligned.
+ */
+const ENTRY_GRID =
+	"grid grid-cols-[24px_32px_minmax(0,1fr)_32px] items-center gap-3 px-3 min-[900px]:grid-cols-[24px_32px_minmax(0,1fr)_56px_96px_132px_32px]";
+const HIDE_SM = "hidden min-[900px]:block";
 
 export const Route = createFileRoute("/browse")({
 	component: BrowsePage,
@@ -173,11 +193,11 @@ function previewRenderer(
 		);
 	}
 	if (isEditableTextContentType(preview.contentType)) {
-		return <pre className="preview-code">{textPreview}</pre>;
+		return <pre className={cn(CODE_BLOCK, "max-h-[70vh]")}>{textPreview}</pre>;
 	}
 	return (
 		<iframe
-			className="h-[70vh] w-full rounded-lg bg-[color:var(--panel-strong)]"
+			className="h-[70vh] w-full rounded-md border bg-background"
 			src={preview.blobUrl}
 			title={preview.fileName}
 		/>
@@ -185,37 +205,42 @@ function previewRenderer(
 }
 
 /**
- * The pretty side of a text file: Markdown and HTML render, everything else
- * shows the pretty-printed source. `text` is the live editor buffer, so the
- * rendered view follows edits without a save round-trip. Each branch owns its
- * own frame — the iframe brings its own border and scrolling, so wrapping it
- * in .preview-pane doubles both.
+ * A field label with its instructions parked behind a "?". The purge dialog used
+ * to print every "go to the Cloudflare dashboard and…" paragraph inline, which
+ * made it taller than the viewport and buried the two inputs that matter.
  */
-function RichTextViewer({ text, lang }: { text: string; lang: TextLang }) {
-	if (lang === "markdown") {
-		return (
-			<div className="preview-pane">
-				<div
-					className="markdown-body"
-					// biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by DOMPurify in renderMarkdown
-					dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
-				/>
-			</div>
-		);
-	}
-	if (lang === "html") {
-		return (
-			<iframe
-				className="preview-html-frame"
-				sandbox=""
-				srcDoc={text}
-				title="HTML preview"
-			/>
-		);
-	}
+function LabelWithHelp({
+	children,
+	help,
+	htmlFor,
+}: {
+	children: ReactNode;
+	help: ReactNode;
+	htmlFor: string;
+}) {
 	return (
-		<div className="preview-pane">
-			<pre className="preview-code">{text}</pre>
+		<div className="flex items-center gap-1">
+			<Label htmlFor={htmlFor}>{children}</Label>
+			<Popover>
+				<PopoverTrigger
+					render={
+						<Button
+							aria-label="Where do I find this?"
+							size="icon-xs"
+							type="button"
+							variant="ghost"
+						/>
+					}
+				>
+					<HugeiconsIcon icon={HelpCircleIcon} size={14} strokeWidth={1.5} />
+				</PopoverTrigger>
+				<PopoverContent
+					align="start"
+					className="text-muted-foreground text-xs leading-relaxed"
+				>
+					{help}
+				</PopoverContent>
+			</Popover>
 		</div>
 	);
 }
@@ -275,11 +300,10 @@ function BrowsePage() {
 	const [preview, setPreview] = useState<ObjectPreview | null>(null);
 	const [previewKey, setPreviewKey] = useState<string | null>(null);
 	const [textPreview, setTextPreview] = useState<string | null>(null);
-	const [editText, setEditText] = useState("");
-	const [editMode, setEditMode] = useState(false);
-	const [saveOpen, setSaveOpen] = useState(false);
-	const [saveCacheControl, setSaveCacheControl] = useState("");
 	const [purgeOpen, setPurgeOpen] = useState(false);
+	// The "you left a field blank" notes are only useful once the operator acts
+	// on the command — showing them on open reads as an error on a fresh form.
+	const [purgeNotesShown, setPurgeNotesShown] = useState(false);
 	const [cfDistId, setCfDistId] = useState("");
 	const [cfZoneId, setCfZoneId] = useState("");
 	const [cfToken, setCfToken] = useState("");
@@ -297,42 +321,30 @@ function BrowsePage() {
 		(text: string) => setStatus({ text, error: true }),
 		[],
 	);
-	const previewLang: TextLang =
-		preview && previewKey
-			? detectTextLang(previewKey, preview.contentType)
-			: "text";
-	// One closer for the button, Escape and the backdrop — the modal used to
-	// only close via its own button, unlike every other overlay in the app.
+	// Runs on every dismissal path (close button, Escape, backdrop) because the
+	// Dialog routes all three through onOpenChange.
 	const closePreview = useCallback(() => {
 		// The blob URL is revoked by the effect that watches `preview`.
 		setPreview(null);
 		setPreviewKey(null);
 		setTextPreview(null);
-		setEditText("");
-		setEditMode(false);
 	}, []);
-	// Only worth showing when something can actually be stale: either the object
-	// is cached now, or this save is about to make it cacheable.
-	const savePurgeCommand = useMemo(() => {
-		if (!(provider && previewKey)) {
-			return undefined;
-		}
-		if (!(isCached(preview?.cacheControl) || isCached(saveCacheControl))) {
-			return undefined;
-		}
-		return buildPurgeCommand(provider, [previewKey]);
-	}, [provider, previewKey, preview?.cacheControl, saveCacheControl]);
-	const applyFormat = useCallback(() => {
-		formatText(editText, previewLang)
-			.then(setEditText)
-			.catch((error: unknown) =>
-				setErrorMessage(
-					error instanceof Error
-						? `Cannot format: ${error.message}`
-						: "Cannot format this file.",
-				),
-			);
-	}, [editText, previewLang, setErrorMessage]);
+	// Editing lives on its own page now (routes/edit.tsx); this is the link to it.
+	const openEditor = useCallback(
+		(key: string) => {
+			closePreview();
+			void navigate({
+				search: {
+					bucket,
+					key,
+					prefix: search.prefix,
+					providerId: provider?.id,
+				},
+				to: "/edit",
+			});
+		},
+		[bucket, closePreview, navigate, provider?.id, search.prefix],
+	);
 	const [isDragActive, setIsDragActive] = useState(false);
 	const [replaceTarget, setReplaceTarget] = useState<ObjectEntry | null>(null);
 	const [renameTarget, setRenameTarget] = useState<ObjectEntry | null>(null);
@@ -389,22 +401,6 @@ function BrowsePage() {
 			}
 		};
 	}, [preview]);
-
-	// Escape has to clear React state too, not just close the <dialog>: the
-	// browser's own dismissal leaves `preview` set, which would strand an
-	// invisible modal that can never be reopened.
-	useEffect(() => {
-		if (!preview) {
-			return;
-		}
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				closePreview();
-			}
-		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [preview, closePreview]);
 
 	// A failed listing rendered as "no files" is indistinguishable from an empty
 	// bucket, so every fetch error here was invisible. Show it.
@@ -564,103 +560,25 @@ function BrowsePage() {
 				throw new Error("Choose a provider and bucket first.");
 			}
 			const nextPreview = await previewObject(provider, bucket, item.key);
-			let nextText: string | null = null;
-			let nextFormatted: string | null = null;
-			if (isEditableTextContentType(nextPreview.contentType)) {
-				const raw = await fetch(nextPreview.blobUrl).then((response) =>
-					response.text(),
-				);
-				nextText = raw;
-				// The editor opens pretty-printed; `nextText` stays the raw bucket
-				// bytes so "Save changes" honestly reflects a diff against S3.
-				nextFormatted = await formatTextOrKeep(
-					raw,
-					detectTextLang(item.key, nextPreview.contentType),
-				);
-			}
-			return { nextPreview, nextText, nextFormatted };
+			// Read-only here: this dialog is the quick look. Changing bytes is the
+			// /edit page's job.
+			const nextText = isEditableTextContentType(nextPreview.contentType)
+				? await fetch(nextPreview.blobUrl).then((response) => response.text())
+				: null;
+			return { nextPreview, nextText };
 		},
-		onSuccess: ({ nextPreview, nextText, nextFormatted }, item) => {
+		onSuccess: ({ nextPreview, nextText }, item) => {
 			if (preview) {
 				URL.revokeObjectURL(preview.blobUrl);
 			}
 			setPreview(nextPreview);
 			setPreviewKey(item.key);
 			setTextPreview(nextText);
-			setEditText(nextFormatted ?? "");
-			setEditMode(false);
 		},
 		onError: (error) => {
 			setErrorMessage(
 				error instanceof Error ? error.message : "Preview failed.",
 			);
-		},
-	});
-
-	const saveTextMutation = useMutation({
-		mutationFn: async (cacheControl: string) => {
-			if (!(provider && bucket && preview && previewKey)) {
-				throw new Error("Nothing to save.");
-			}
-			// putObjectText writes then reads the object back, so reaching here
-			// means the bytes are really in the bucket.
-			await putObjectText(
-				provider,
-				bucket,
-				previewKey,
-				editText,
-				preview.contentType,
-				cacheControl.trim() || undefined,
-			);
-
-			// A stale CDN copy is the other half of "my edit disappeared". AWS can
-			// purge in-app; R2 cannot (Cloudflare's API refuses browser calls), so
-			// there we point at the copy-paste command instead of failing. Either
-			// way a purge problem must never read as a save failure.
-			//
-			// An object nobody caches needs no purge at all, so don't imply one.
-			const wasCached =
-				isCached(preview.cacheControl) || isCached(cacheControl);
-			if (!wasCached) {
-				return { saved: editText, cacheControl, purge: undefined };
-			}
-			if (canPurge(provider)) {
-				const purge = await purgeCache(provider, [previewKey]).catch(
-					(error: unknown) =>
-						`Saved, but the CDN purge failed: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-				);
-				return { saved: editText, cacheControl, purge };
-			}
-			const needsManualPurge =
-				provider.type === "r2" &&
-				Boolean(provider.cloudflareZoneId && provider.cloudflareApiToken);
-			return {
-				saved: editText,
-				cacheControl,
-				purge: needsManualPurge
-					? "CDN not purged — run the purge command shown in the save dialog."
-					: undefined,
-			};
-		},
-		onSuccess: async ({ saved, cacheControl, purge }) => {
-			setTextPreview(saved);
-			setPreview((current) =>
-				current
-					? { ...current, cacheControl: cacheControl.trim() || undefined }
-					: current,
-			);
-			setSaveOpen(false);
-			setStatusMessage(
-				purge ? `Saved to ${bucket}. ${purge}` : `Saved to ${bucket}.`,
-			);
-			await queryClient.invalidateQueries({
-				queryKey: ["objects", provider?.id, bucket],
-			});
-		},
-		onError: (error) => {
-			setErrorMessage(error instanceof Error ? error.message : "Save failed.");
 		},
 	});
 
@@ -1103,17 +1021,17 @@ function BrowsePage() {
 
 	if (!providers.length) {
 		return (
-			<div className="empty-state">
-				<FileGlyph item={{ kind: "folder", key: "" }} open size="lg" />
-				<h2 className="page-subtitle">No provider configured</h2>
-				<p className="page-copy max-w-md">
-					Add a provider profile to start browsing. Credentials stay in this
-					browser and requests go straight to the S3 API.
-				</p>
-				<Link className="button-primary mt-1" to="/providers">
-					Open providers
-				</Link>
-			</div>
+			<Card>
+				<CardContent className="flex flex-col items-center gap-3 py-16 text-center">
+					<FileGlyph item={{ kind: "folder", key: "" }} open size="lg" />
+					<h2 className="font-semibold text-base">No provider configured</h2>
+					<p className="max-w-md text-muted-foreground text-sm">
+						Add a provider profile to start browsing. Credentials stay in this
+						browser and requests go straight to the S3 API.
+					</p>
+					<Button render={<Link to="/providers" />}>Open providers</Button>
+				</CardContent>
+			</Card>
 		);
 	}
 
@@ -1144,60 +1062,88 @@ function BrowsePage() {
 				type="file"
 			/>
 
-			<div className="browser-toolbar">
-				<div className="browser-breadcrumbs">
-					<button
-						className={cn(
-							"crumb crumb-root",
-							!pathSegments.length && "crumb-current",
-						)}
-						onClick={() =>
-							void navigate({
-								search: (current) => ({ ...current, prefix: "" }),
-							})
-						}
-						type="button"
-					>
-						<HugeiconsIcon icon={Database01Icon} size={14} strokeWidth={1.5} />
-						{bucket ?? "root"}
-					</button>
-					{pathSegments.map((segment, index) => {
-						const nextPrefix = `${pathSegments.slice(0, index + 1).join("/")}/`;
-						const isLast = index === pathSegments.length - 1;
-						return (
-							<Fragment key={nextPrefix}>
-								<span className="browser-breadcrumb-separator">
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<Breadcrumb>
+					<BreadcrumbList>
+						<BreadcrumbItem>
+							{pathSegments.length ? (
+								<BreadcrumbLink
+									render={
+										<button
+											onClick={() =>
+												void navigate({
+													search: (current) => ({ ...current, prefix: "" }),
+												})
+											}
+											type="button"
+										/>
+									}
+								>
 									<HugeiconsIcon
-										icon={ArrowRight01Icon}
-										size={13}
+										icon={Database01Icon}
+										size={14}
 										strokeWidth={1.5}
 									/>
-								</span>
-								<button
-									className={cn("crumb", isLast && "crumb-current")}
-									onClick={() =>
-										void navigate({
-											search: (current) => ({
-												...current,
-												prefix: nextPrefix,
-											}),
-										})
-									}
-									type="button"
-								>
-									{segment}
-								</button>
-							</Fragment>
-						);
-					})}
-				</div>
+									{bucket ?? "root"}
+								</BreadcrumbLink>
+							) : (
+								<BreadcrumbPage className="flex items-center gap-1.5">
+									<HugeiconsIcon
+										icon={Database01Icon}
+										size={14}
+										strokeWidth={1.5}
+									/>
+									{bucket ?? "root"}
+								</BreadcrumbPage>
+							)}
+						</BreadcrumbItem>
+						{pathSegments.map((segment, index) => {
+							const nextPrefix = `${pathSegments.slice(0, index + 1).join("/")}/`;
+							const isLast = index === pathSegments.length - 1;
+							return (
+								<Fragment key={nextPrefix}>
+									<BreadcrumbSeparator>
+										<HugeiconsIcon
+											icon={ArrowRight01Icon}
+											size={13}
+											strokeWidth={1.5}
+										/>
+									</BreadcrumbSeparator>
+									<BreadcrumbItem>
+										{isLast ? (
+											<BreadcrumbPage>{segment}</BreadcrumbPage>
+										) : (
+											<BreadcrumbLink
+												render={
+													<button
+														onClick={() =>
+															void navigate({
+																search: (current) => ({
+																	...current,
+																	prefix: nextPrefix,
+																}),
+															})
+														}
+														type="button"
+													/>
+												}
+											>
+												{segment}
+											</BreadcrumbLink>
+										)}
+									</BreadcrumbItem>
+								</Fragment>
+							);
+						})}
+					</BreadcrumbList>
+				</Breadcrumb>
 
-				<div className="browser-actions">
-					<span className="browser-kpi-chip">
+				<div className="flex flex-wrap items-center gap-2">
+					<Badge variant="outline">
 						{folderCount ? `${folderCount} ▸ ` : ""}
 						{fileCount} {fileCount === 1 ? "file" : "files"}
 						{visibleBytes > 0 ? ` · ${formatBytes(visibleBytes)}` : ""}
-					</span>
+					</Badge>
 					<input
 						className="sr-only"
 						id="upload-input"
@@ -1211,38 +1157,40 @@ function BrowsePage() {
 						}}
 						type="file"
 					/>
+					{/* A styled <label>, not a Button — the label is what opens the
+					    file picker for the visually-hidden input above. */}
 					<label
-						className="button-primary cursor-pointer"
+						className={cn(buttonVariants(), "cursor-pointer")}
 						htmlFor="upload-input"
 					>
 						<HugeiconsIcon icon={Upload01Icon} size={15} strokeWidth={1.5} />
 						Upload
 					</label>
-					<button
-						className="button-secondary"
+					<Button
 						onClick={() => {
 							setFolderName("");
 							setFolderDialogOpen(true);
 						}}
 						type="button"
+						variant="outline"
 					>
 						<HugeiconsIcon icon={FolderAddIcon} size={15} strokeWidth={1.5} />
 						New folder
-					</button>
+					</Button>
 					{selectedKeys.length > 0 && (
-						<button
-							className="button-danger"
+						<Button
 							onClick={() => setDeleteConfirmOpen(true)}
 							type="button"
+							variant="destructive"
 						>
 							<HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={1.5} />
 							Delete {selectedKeys.length}
-						</button>
+						</Button>
 					)}
 				</div>
 			</div>
 
-			<div className="browser-toolbar">
+			<div className="flex flex-wrap items-center justify-between gap-3">
 				<div className="flex flex-wrap items-center gap-2">
 					<Select
 						onValueChange={(nextProviderId) => {
@@ -1266,7 +1214,7 @@ function BrowsePage() {
 						}}
 						value={provider?.id}
 					>
-						<SelectTrigger className="h-[30px] w-[168px]" size="sm">
+						<SelectTrigger className="w-[168px]" size="sm">
 							<SelectValue placeholder="Select provider">
 								{provider?.name ?? "Select provider"}
 							</SelectValue>
@@ -1295,7 +1243,7 @@ function BrowsePage() {
 							}}
 							value={bucket}
 						>
-							<SelectTrigger className="h-[30px] w-[168px]" size="sm">
+							<SelectTrigger className="w-[168px]" size="sm">
 								<SelectValue placeholder="Select bucket" />
 							</SelectTrigger>
 							<SelectContent align="start">
@@ -1316,60 +1264,64 @@ function BrowsePage() {
 								}
 							}}
 						>
-							<div className="search-field w-[168px]">
-								<input
-									aria-label="Bucket name"
-									onChange={(event) => setBucketInput(event.target.value)}
-									placeholder="Bucket name…"
-									value={bucketInput}
-								/>
-							</div>
+							<Input
+								aria-label="Bucket name"
+								className="w-[168px]"
+								onChange={(event) => setBucketInput(event.target.value)}
+								placeholder="Bucket name…"
+								value={bucketInput}
+							/>
 						</form>
 					)}
 
-					<div className="search-field">
-						<HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={1.5} />
-						<input
+					<InputGroup className="w-[220px]">
+						<InputGroupAddon>
+							<HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={1.5} />
+						</InputGroupAddon>
+						<InputGroupInput
+							aria-label="Filter this folder"
 							onChange={(event) => setSearchInput(event.target.value)}
 							placeholder="Filter this folder"
 							value={searchInput}
 						/>
-					</div>
+					</InputGroup>
 				</div>
 
-				<div className="view-switch">
+				<ToggleGroup
+					onValueChange={(value: string[]) => {
+						const next = value[0];
+						if (!next) {
+							return;
+						}
+						void navigate({
+							search: (current) => ({
+								...current,
+								view: next as BrowserView,
+							}),
+						});
+					}}
+					spacing={0}
+					value={[search.view]}
+					variant="outline"
+				>
 					{(
 						[
 							["list", LeftToRightListBulletIcon, "List"],
 							["grid", GridViewIcon, "Grid"],
 						] as const
 					).map(([view, icon, label]) => (
-						<button
-							className="view-switch-item"
-							data-active={search.view === view}
-							key={view}
-							onClick={() =>
-								void navigate({
-									search: (current) => ({
-										...current,
-										view: view satisfies BrowserView,
-									}),
-								})
-							}
-							title={`${label} view`}
-							type="button"
-						>
+						<ToggleGroupItem key={view} title={`${label} view`} value={view}>
 							<HugeiconsIcon icon={icon} size={15} strokeWidth={1.5} />
-						</button>
+						</ToggleGroupItem>
 					))}
-				</div>
+				</ToggleGroup>
 			</div>
 
 			{bucketsQuery.data?.length ? null : (
-				<div className="field-note">
+				<p className="text-muted-foreground text-xs">
 					No buckets are available to show. If this is R2, account-level listing
 					may be blocked by browser CORS.
-				</div>
+				</p>
 			)}
 
 			{/* biome-ignore lint/a11y/noStaticElementInteractions: this section is a drag-and-drop target for file uploads, not a click target */}
@@ -1381,27 +1333,29 @@ function BrowsePage() {
 				onDrop={handleDrop}
 			>
 				{isDragActive ? (
-					<div className="drop-veil">
+					<div className="pointer-events-none absolute inset-0 z-30 grid place-items-center rounded-lg border border-primary border-dashed bg-primary/5 font-medium text-sm">
 						Drop to upload into {search.prefix || "/"}
 					</div>
 				) : null}
 
 				{objects.length === 0 ? (
-					<div className="empty-state">
-						<FileGlyph item={{ kind: "folder", key: "" }} open size="lg" />
-						<div className="page-subtitle">
-							{searchInput
-								? "Nothing matches that filter"
-								: "This folder is empty"}
-						</div>
-						<p className="page-copy max-w-sm">
-							{searchInput
-								? "Clear the filter to see everything in this prefix."
-								: "Drop files here to upload them into this prefix."}
-						</p>
-					</div>
+					<Card>
+						<CardContent className="flex flex-col items-center gap-3 py-16 text-center">
+							<FileGlyph item={{ kind: "folder", key: "" }} open size="lg" />
+							<div className="font-semibold text-base">
+								{searchInput
+									? "Nothing matches that filter"
+									: "This folder is empty"}
+							</div>
+							<p className="max-w-sm text-muted-foreground text-sm">
+								{searchInput
+									? "Clear the filter to see everything in this prefix."
+									: "Drop files here to upload them into this prefix."}
+							</p>
+						</CardContent>
+					</Card>
 				) : search.view === "grid" ? (
-					<div className="object-grid">
+					<div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-2.5">
 						{objects.map((item) => (
 							<ObjectCard
 								item={item}
@@ -1409,6 +1363,7 @@ function BrowsePage() {
 								maxSize={maxVisibleSize}
 								onDelete={() => deleteMutation.mutate([item.key])}
 								onDownload={() => downloadMutation.mutate(item)}
+								onEdit={() => openEditor(item.key)}
 								onOpenFolder={() =>
 									void navigate({
 										search: (current) => ({
@@ -1436,34 +1391,29 @@ function BrowsePage() {
 						))}
 					</div>
 				) : (
-					<div className="entry-list">
-						<div className="entry-head">
-							<div className="entry-check">
-								<input
-									aria-label="Select all"
-									checked={
-										selectedKeys.length > 0 &&
-										selectedKeys.length === objects.length
-									}
-									onChange={(event) =>
-										setSelectedKeys(
-											event.target.checked
-												? objects.map((entry) => entry.key)
-												: [],
-										)
-									}
-									type="checkbox"
-								/>
-							</div>
+					<div className="overflow-hidden rounded-xl border bg-card">
+						<div className={cn(ENTRY_GRID, "h-9 border-b")}>
+							<Checkbox
+								aria-label="Select all"
+								checked={
+									selectedKeys.length > 0 &&
+									selectedKeys.length === objects.length
+								}
+								onCheckedChange={(checked) =>
+									setSelectedKeys(
+										checked ? objects.map((entry) => entry.key) : [],
+									)
+								}
+							/>
 							<span />
-							<span className="section-label">Name</span>
-							<span className="section-label entry-hide-sm">Type</span>
-							<span className="section-label entry-hide-sm">Size</span>
-							<span className="section-label entry-hide-sm">Modified</span>
+							<span className={SECTION_LABEL}>Name</span>
+							<span className={cn(SECTION_LABEL, HIDE_SM)}>Type</span>
+							<span className={cn(SECTION_LABEL, HIDE_SM)}>Size</span>
+							<span className={cn(SECTION_LABEL, HIDE_SM)}>Modified</span>
 							<span />
 						</div>
 						<div
-							className="entry-scroll max-h-[calc(100vh-260px)] min-h-[320px]"
+							className="max-h-[calc(100vh-260px)] min-h-[320px] overflow-auto"
 							ref={parentRef}
 						>
 							<div
@@ -1486,6 +1436,7 @@ function BrowsePage() {
 												maxSize={maxVisibleSize}
 												onDelete={() => deleteMutation.mutate([item.key])}
 												onDownload={() => downloadMutation.mutate(item)}
+												onEdit={() => openEditor(item.key)}
 												onOpenFolder={() =>
 													void navigate({
 														search: (current) => ({
@@ -1520,25 +1471,27 @@ function BrowsePage() {
 			</section>
 
 			{status.error ? (
-				<div className="status-banner status-banner-error" role="alert">
-					<span>{status.text}</span>
-					<Button
-						onClick={() => setStatusMessage("")}
-						size="xs"
-						type="button"
-						variant="outline"
-					>
-						Dismiss
-					</Button>
-				</div>
+				<Alert variant="destructive">
+					<AlertDescription>{status.text}</AlertDescription>
+					<AlertAction>
+						<Button
+							onClick={() => setStatusMessage("")}
+							size="xs"
+							type="button"
+							variant="outline"
+						>
+							Dismiss
+						</Button>
+					</AlertAction>
+				</Alert>
 			) : status.text ? (
-				<div className="status-banner" role="status">
-					{status.text}
-				</div>
+				<Alert>
+					<AlertDescription>{status.text}</AlertDescription>
+				</Alert>
 			) : null}
 
 			{transferToasts.length ? (
-				<div className="toast-stack">
+				<div className="fixed right-4 bottom-4 z-60 grid w-[min(320px,calc(100vw-2rem))] gap-2">
 					{transferToasts.map((transfer) => {
 						const progress = transfer.totalBytes
 							? Math.min(
@@ -1549,311 +1502,162 @@ function BrowsePage() {
 								? 100
 								: 24;
 						return (
-							<div className="transfer-toast" key={transfer.id}>
-								<div className="flex items-start justify-between gap-3">
-									<div className="min-w-0">
-										<div className="toast-title">{transfer.fileName}</div>
-										<div className="toast-meta">
-											{transfer.kind} • {transfer.status}
+							<Card key={transfer.id} size="sm">
+								<CardContent className="space-y-3">
+									<div className="flex items-start justify-between gap-3">
+										<div className="min-w-0">
+											<div className="truncate font-medium text-sm">
+												{transfer.fileName}
+											</div>
+											<div className="text-muted-foreground text-xs">
+												{transfer.kind} • {transfer.status}
+											</div>
 										</div>
+										<Badge
+											variant={
+												transfer.status === "failed"
+													? "destructive"
+													: "secondary"
+											}
+										>
+											{transfer.totalBytes
+												? `${Math.round(progress)}%`
+												: "live"}
+										</Badge>
 									</div>
-									<span
-										className={cn(
-											"pill",
-											transfer.status === "failed" && "pill-danger",
-										)}
-									>
-										{transfer.totalBytes ? `${Math.round(progress)}%` : "live"}
-									</span>
-								</div>
-								<div className="toast-progress mt-3">
+									<Progress
+										className={
+											transfer.status === "failed"
+												? "[&_[data-slot=progress-indicator]]:bg-destructive"
+												: undefined
+										}
+										value={progress}
+									/>
 									<div
 										className={cn(
-											"toast-progress-bar",
-											transfer.status === "failed" &&
-												"toast-progress-bar-danger",
+											"text-xs",
+											transfer.errorMessage
+												? "text-destructive"
+												: "text-muted-foreground",
 										)}
-										style={{ width: `${progress}%` }}
-									/>
-								</div>
-								<div className="toast-meta mt-2">
-									{transfer.errorMessage
-										? transfer.errorMessage
-										: `${formatBytes(transfer.transferredBytes)} / ${formatBytes(transfer.totalBytes)}`}
-								</div>
-							</div>
+									>
+										{transfer.errorMessage
+											? transfer.errorMessage
+											: `${formatBytes(transfer.transferredBytes)} / ${formatBytes(transfer.totalBytes)}`}
+									</div>
+								</CardContent>
+							</Card>
 						);
 					})}
 				</div>
 			) : null}
 
-			{preview ? (
-				// Deliberately not a native <dialog>: showModal() puts it in the top
-				// layer, which renders it above the save and purge dialogs opened from
-				// inside it. Escape is handled by the keydown effect instead.
-				<div className="preview-modal">
-					<button
-						aria-label="Close preview"
-						className="preview-backdrop"
-						onClick={closePreview}
-						type="button"
-					/>
-					<div className="preview-frame">
-						<div className="mb-4 flex items-center justify-between gap-4">
-							<div>
-								<div className="section-label">Preview</div>
-								<div className="preview-title mt-2">{preview.fileName}</div>
-							</div>
-							<div className="flex items-center gap-2">
-								{provider &&
-								(provider.type === "aws" || provider.type === "r2") ? (
-									<Button
-										onClick={() => {
-											setCfDistId(provider.cloudFrontDistributionId ?? "");
-											setCfZoneId(provider.cloudflareZoneId ?? "");
-											setCfToken(provider.cloudflareApiToken ?? "");
-											setCdnBaseUrl(provider.publicBaseUrl ?? "");
-											setPurgeOpen(true);
-										}}
-										size="sm"
-										type="button"
-										variant="outline"
-									>
-										Purge cache
-									</Button>
-								) : null}
-								<Button
-									onClick={closePreview}
-									size="sm"
-									type="button"
-									variant="outline"
-								>
-									Close
-								</Button>
-							</div>
-						</div>
-						{textPreview !== null &&
-						isEditableTextContentType(preview.contentType) ? (
-							<div className="flex flex-col gap-3">
-								<div className="flex flex-wrap items-center justify-between gap-2">
-									<div className="flex items-center gap-2">
-										<button
-											className={cn(
-												"toggle-button",
-												!editMode && "toggle-button-active",
-											)}
-											onClick={() => setEditMode(false)}
-											type="button"
-										>
-											Preview
-										</button>
-										<button
-											className={cn(
-												"toggle-button",
-												editMode && "toggle-button-active",
-											)}
-											onClick={() => setEditMode(true)}
-											type="button"
-										>
-											Edit
-										</button>
-									</div>
-									{editMode && canFormat(previewLang) ? (
-										<Button
-											onClick={applyFormat}
-											size="sm"
-											type="button"
-											variant="outline"
-										>
-											Format {previewLang}
-										</Button>
-									) : null}
-								</div>
-								{editMode ? (
-									<Textarea
-										className="h-[62vh] w-full resize-none font-mono text-sm"
-										onChange={(event) => setEditText(event.target.value)}
-										spellCheck={false}
-										value={editText}
-									/>
-								) : (
-									<RichTextViewer lang={previewLang} text={editText} />
-								)}
-								<div className="flex items-center justify-end gap-2">
-									<Button
-										disabled={editText === textPreview}
-										onClick={() => setEditText(textPreview)}
-										size="sm"
-										type="button"
-										variant="outline"
-									>
-										Reset
-									</Button>
-									<Button
-										disabled={
-											editText === textPreview || saveTextMutation.isPending
-										}
-										onClick={() => {
-											// Pre-fill with what the object already has, so the common
-											// case is one click and the header never silently changes.
-											setSaveCacheControl(
-												preview.cacheControl ||
-													provider?.defaultCacheControl ||
-													suggestCacheControl(previewKey ?? ""),
-											);
-											setSaveOpen(true);
-										}}
-										size="sm"
-										type="button"
-										variant="default"
-									>
-										{saveTextMutation.isPending ? "Saving…" : "Save changes"}
-									</Button>
-								</div>
-							</div>
-						) : (
-							previewRenderer(preview, textPreview)
-						)}
-					</div>
-				</div>
-			) : null}
-
-			<Dialog onOpenChange={setSaveOpen} open={saveOpen}>
-				<DialogContent>
+			<Dialog
+				onOpenChange={(open) => {
+					if (!open) {
+						closePreview();
+					}
+				}}
+				open={!!preview}
+			>
+				<DialogContent className="max-h-[90vh] w-[min(92vw,1000px)] max-w-[min(92vw,1000px)] overflow-auto sm:max-w-[min(92vw,1000px)]">
 					<DialogHeader>
-						<DialogTitle>Save {preview?.fileName}</DialogTitle>
-						<DialogDescription>
-							Cache-Control is written with the file. A long TTL is what makes
-							the CDN answer for free instead of billing you for a fetch from
-							the bucket on every view — the trade is that viewers keep the old
-							copy until it expires or you purge.
-						</DialogDescription>
-					</DialogHeader>
-
-					{/* min-w-0: DialogContent is a grid, and a grid item defaults to
-					    min-width:auto, so the wide <pre> below would stretch the track
-					    past the dialog instead of scrolling inside it. */}
-					<div className="flex min-w-0 flex-col gap-2">
-						<div className="section-label">Cache-Control</div>
-						<div className="flex flex-wrap gap-2">
-							{CACHE_PRESETS.map((preset) => (
-								<button
-									className={cn(
-										"toggle-button",
-										saveCacheControl === preset.value && "toggle-button-active",
-									)}
-									key={preset.value}
-									onClick={() => setSaveCacheControl(preset.value)}
-									title={preset.hint}
-									type="button"
-								>
-									{preset.label}
-								</button>
-							))}
-						</div>
-						<Input
-							onChange={(event) => setSaveCacheControl(event.target.value)}
-							placeholder="public, max-age=300, must-revalidate"
-							value={saveCacheControl}
-						/>
-						<p className="text-muted-foreground text-xs">
-							{describeCacheControl(saveCacheControl)}
-						</p>
-						<p className="text-muted-foreground text-xs">
-							Currently stored on this object:{" "}
-							<code>{preview?.cacheControl || "nothing"}</code>
-						</p>
-					</div>
-
-					{savePurgeCommand ? (
-						<div className="mt-5 flex min-w-0 flex-col gap-2">
-							<div className="flex items-center justify-between gap-3">
-								<span className="section-label">
-									Purge this file after saving
-								</span>
+						<DialogTitle className="truncate pr-16">
+							{preview?.fileName}
+						</DialogTitle>
+						<DialogDescription className="flex flex-wrap items-center gap-2">
+							<span>{preview?.contentType}</span>
+							{provider &&
+							(provider.type === "aws" || provider.type === "r2") ? (
 								<Button
-									onClick={async () => {
-										await navigator.clipboard.writeText(
-											savePurgeCommand.command,
-										);
-										setStatusMessage("Copied the purge command.");
+									onClick={() => {
+										setCfDistId(provider.cloudFrontDistributionId ?? "");
+										setCfZoneId(provider.cloudflareZoneId ?? "");
+										setCfToken(provider.cloudflareApiToken ?? "");
+										setCdnBaseUrl(provider.publicBaseUrl ?? "");
+										setPurgeOpen(true);
 									}}
 									size="xs"
 									type="button"
 									variant="outline"
 								>
-									Copy
+									Purge cache
 								</Button>
-							</div>
-							<pre className="preview-code max-h-40 overflow-auto text-xs">
-								{savePurgeCommand.command}
-							</pre>
-							<p className="text-muted-foreground text-xs">
-								{savePurgeCommand.scope}
-							</p>
-							{savePurgeCommand.notes.map((note) => (
-								<p className="text-destructive text-xs" key={note}>
-									{note}
-								</p>
-							))}
-							{provider && canPurge(provider) ? (
-								<p className="text-muted-foreground text-xs">
-									Saving also runs this purge in-app — the command is here for
-									scripting or if the in-app call fails.
-								</p>
-							) : (
-								<p className="text-muted-foreground text-xs">
-									Cloudflare's API refuses browser calls, so run this yourself
-									after saving. Until it completes, the edge keeps serving the
-									old file.
-								</p>
-							)}
-						</div>
-					) : null}
+							) : null}
+						</DialogDescription>
+					</DialogHeader>
 
-					<DialogFooter className="mt-5">
-						<Button
-							onClick={() => setSaveOpen(false)}
-							size="xs"
-							type="button"
-							variant="outline"
-						>
-							Cancel
-						</Button>
-						<Button
-							disabled={saveTextMutation.isPending}
-							onClick={() => saveTextMutation.mutate(saveCacheControl)}
-							size="xs"
-							type="button"
-							variant="default"
-						>
-							{saveTextMutation.isPending ? "Saving…" : "Save file"}
-						</Button>
-					</DialogFooter>
+					<div className="flex min-w-0 justify-center">
+						{previewRenderer(preview, textPreview)}
+					</div>
+
+					{preview &&
+					previewKey &&
+					isEditableTextContentType(preview.contentType) ? (
+						<DialogFooter>
+							<Button
+								onClick={() => openEditor(previewKey)}
+								size="sm"
+								type="button"
+							>
+								<HugeiconsIcon
+									icon={FileEditIcon}
+									size={15}
+									strokeWidth={1.5}
+								/>
+								Open in editor
+							</Button>
+						</DialogFooter>
+					) : null}
 				</DialogContent>
 			</Dialog>
 
-			<Dialog open={purgeOpen} onOpenChange={setPurgeOpen}>
-				<DialogContent>
+			<Dialog
+				open={purgeOpen}
+				onOpenChange={(open) => {
+					setPurgeOpen(open);
+					if (!open) {
+						setPurgeNotesShown(false);
+					}
+				}}
+			>
+				{/* max-h + overflow: the R2 branch has two inputs, a URL field and a
+				    pair of multi-line curl commands, which together are taller than
+				    most viewports. min-w-0 on the form: DialogContent is a grid, so
+				    without it the wide <pre> stretches the track instead of
+				    scrolling inside it. */}
+				<DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
 					<DialogHeader>
 						<DialogTitle>Purge CDN cache</DialogTitle>
 						<DialogDescription>
 							{provider?.type === "r2"
-								? "Cloudflare's API refuses browser calls, so this builds a command for you to run yourself. Credentials are stored encrypted with this provider and never leave your machine."
-								: "Invalidates the distribution so viewers get the latest objects. Credentials are stored encrypted with this provider."}
+								? "Cloudflare's API refuses browser calls, so this builds a command for you to run yourself. Credentials never leave your machine."
+								: "Invalidates the distribution so viewers get the latest objects. Credentials never leave your machine."}
 						</DialogDescription>
 					</DialogHeader>
 					<form
+						className="flex min-w-0 flex-col gap-4"
 						onSubmit={(event) => {
 							event.preventDefault();
+							setPurgeNotesShown(true);
 							purgeMutation.mutate({});
 						}}
 					>
 						{provider?.type === "aws" ? (
-							<div className="flex flex-col gap-2">
-								<label className="section-label" htmlFor="cf-dist">
+							<div className="flex min-w-0 flex-col gap-2">
+								<LabelWithHelp
+									help={
+										<>
+											AWS Console → CloudFront → Distributions → copy the ID of
+											the distribution serving this bucket. Uses this provider's
+											existing access key, which needs the{" "}
+											<code>cloudfront:CreateInvalidation</code> IAM permission.
+										</>
+									}
+									htmlFor="cf-dist"
+								>
 									CloudFront Distribution ID
-								</label>
+								</LabelWithHelp>
 								<Input
 									autoFocus
 									id="cf-dist"
@@ -1861,18 +1665,20 @@ function BrowsePage() {
 									placeholder="E1A2B3C4D5E6F7"
 									value={cfDistId}
 								/>
-								<p className="text-muted-foreground text-xs">
-									AWS Console → CloudFront → Distributions → copy the ID of the
-									distribution serving this bucket. Uses this provider's
-									existing access key (needs the{" "}
-									<code>cloudfront:CreateInvalidation</code> IAM permission).
-								</p>
 							</div>
 						) : provider?.type === "r2" ? (
-							<div className="flex flex-col gap-2">
-								<label className="section-label" htmlFor="cf-zone">
+							<div className="flex min-w-0 flex-col gap-2">
+								<LabelWithHelp
+									help={
+										<>
+											Cloudflare dashboard → select your domain → Overview → API
+											panel on the right.
+										</>
+									}
+									htmlFor="cf-zone"
+								>
 									Cloudflare Zone ID
-								</label>
+								</LabelWithHelp>
 								<Input
 									autoFocus
 									id="cf-zone"
@@ -1880,9 +1686,19 @@ function BrowsePage() {
 									placeholder="0123456789abcdef0123456789abcdef"
 									value={cfZoneId}
 								/>
-								<label className="section-label mt-2" htmlFor="cf-token">
+								<LabelWithHelp
+									help={
+										<>
+											My Profile → API Tokens → Create Token, and give it{" "}
+											<code>Zone · Cache Purge</code> permission for this zone
+											only. The token appears in the command below, so keep its
+											scope narrow.
+										</>
+									}
+									htmlFor="cf-token"
+								>
 									Cloudflare API Token
-								</label>
+								</LabelWithHelp>
 								<Input
 									id="cf-token"
 									onChange={(event) => setCfToken(event.target.value)}
@@ -1890,12 +1706,6 @@ function BrowsePage() {
 									type="password"
 									value={cfToken}
 								/>
-								<p className="text-muted-foreground text-xs">
-									Zone ID: Cloudflare dashboard → select your domain → Overview
-									→ API panel (right side). Token: My Profile → API Tokens →
-									Create Token → give it <code>Zone · Cache Purge</code>{" "}
-									permission for this zone.
-								</p>
 							</div>
 						) : (
 							<p className="text-muted-foreground text-sm">
@@ -1904,36 +1714,87 @@ function BrowsePage() {
 							</p>
 						)}
 						{provider?.type === "aws" || provider?.type === "r2" ? (
-							<div className="mt-4 flex flex-col gap-2">
-								<label className="section-label" htmlFor="cdn-base">
+							<div className="flex min-w-0 flex-col gap-2">
+								<LabelWithHelp
+									help={
+										<>
+											The domain your visitors load these objects from. Set it
+											and saving a file purges just that file instead of the
+											whole zone or distribution.
+										</>
+									}
+									htmlFor="cdn-base"
+								>
 									Public CDN URL (optional)
-								</label>
+								</LabelWithHelp>
 								<Input
 									id="cdn-base"
 									onChange={(event) => setCdnBaseUrl(event.target.value)}
 									placeholder="https://cdn.example.com"
 									value={cdnBaseUrl}
 								/>
-								<p className="text-muted-foreground text-xs">
-									The domain your visitors load these objects from. Set it and
-									saving a file purges just that file instead of the whole
-									zone/distribution.
-								</p>
 							</div>
 						) : null}
 						{purgeCommands.length ? (
-							<div className="mt-5 flex flex-col gap-4">
-								<div className="section-label">
-									{provider?.type === "r2"
-										? "Run this in your terminal"
-										: "Or run it from your terminal"}
+							<div className="flex min-w-0 flex-col gap-4">
+								<div className="flex items-center gap-1">
+									<span className={SECTION_LABEL}>
+										{provider?.type === "r2"
+											? "Run this in your terminal"
+											: "Or run it from your terminal"}
+									</span>
+									<Popover>
+										<PopoverTrigger
+											render={
+												<Button
+													aria-label="About these commands"
+													size="icon-xs"
+													type="button"
+													variant="ghost"
+												/>
+											}
+										>
+											<HugeiconsIcon
+												icon={HelpCircleIcon}
+												size={14}
+												strokeWidth={1.5}
+											/>
+										</PopoverTrigger>
+										<PopoverContent
+											align="start"
+											className="text-muted-foreground text-xs leading-relaxed"
+										>
+											{provider?.type === "r2" ? (
+												<>
+													Paste it into a terminal after saving a file. The
+													token is visible in the command, so clear your shell
+													history if that matters to you. Cloudflare replies{" "}
+													<code>{'"success": true'}</code> when the purge is
+													accepted; edge propagation takes a few seconds.
+												</>
+											) : (
+												<>
+													Requires the AWS CLI and credentials with{" "}
+													<code>cloudfront:CreateInvalidation</code>.{" "}
+													<strong>Save &amp; purge now</strong> does the same
+													thing without leaving the browser.
+												</>
+											)}
+										</PopoverContent>
+									</Popover>
 								</div>
 								{purgeCommands.map((entry) => (
-									<div className="flex flex-col gap-2" key={entry.label}>
+									<div
+										className="flex min-w-0 flex-col gap-2"
+										key={entry.label}
+									>
 										<div className="flex items-center justify-between gap-3">
-											<span className="font-medium text-sm">{entry.label}</span>
+											<span className="truncate font-medium text-sm">
+												{entry.label}
+											</span>
 											<Button
 												onClick={async () => {
+													setPurgeNotesShown(true);
 													await navigator.clipboard.writeText(
 														entry.value.command,
 													);
@@ -1946,39 +1807,22 @@ function BrowsePage() {
 												Copy
 											</Button>
 										</div>
-										<pre className="preview-code max-h-48 overflow-auto text-xs">
+										<pre className={cn(CODE_BLOCK, "max-h-40")}>
 											{entry.value.command}
 										</pre>
 										<p className="text-muted-foreground text-xs">
 											{entry.value.scope}
 										</p>
-										{entry.value.notes.map((note) => (
+										{(purgeNotesShown ? entry.value.notes : []).map((note) => (
 											<p className="text-destructive text-xs" key={note}>
 												{note}
 											</p>
 										))}
 									</div>
 								))}
-								{provider?.type === "r2" ? (
-									<p className="text-muted-foreground text-xs">
-										Paste it into a terminal after saving a file. The token is
-										visible in the command — prefer a token scoped to{" "}
-										<code>Zone · Cache Purge</code> on this zone only, and clear
-										your shell history if that matters to you. Cloudflare
-										replies <code>{'"success": true'}</code> when the purge is
-										accepted; edge propagation takes a few seconds.
-									</p>
-								) : (
-									<p className="text-muted-foreground text-xs">
-										Requires the AWS CLI and credentials with{" "}
-										<code>cloudfront:CreateInvalidation</code>. The in-app
-										button below does the same thing without leaving the
-										browser.
-									</p>
-								)}
 							</div>
 						) : null}
-						<DialogFooter className="mt-5">
+						<DialogFooter>
 							<Button
 								onClick={() => setPurgeOpen(false)}
 								size="xs"
@@ -1998,7 +1842,10 @@ function BrowsePage() {
 							{provider?.type === "aws" ? (
 								<Button
 									disabled={purgeMutation.isPending || !cfDistId.trim()}
-									onClick={() => purgeMutation.mutate({ purge: true })}
+									onClick={() => {
+										setPurgeNotesShown(true);
+										purgeMutation.mutate({ purge: true });
+									}}
 									size="xs"
 									type="button"
 									variant="default"
@@ -2181,6 +2028,7 @@ type EntryActions = {
 	onOpenFolder: () => void;
 	onDownload: () => void;
 	onPreview: () => void;
+	onEdit: () => void;
 	onReplace: () => void;
 	onRename: () => void;
 	onDelete: () => void;
@@ -2205,6 +2053,16 @@ function EntryMenu(props: EntryActions) {
 						Preview
 					</DropdownMenuItem>
 				)}
+				{/* Decided from the key, not the object's declared Content-Type: the
+				    menu opens before anything is fetched, and R2 objects routinely
+				    arrive as application/octet-stream. */}
+				{isFile &&
+					isEditableTextContentType(resolveObjectContentType(item.key)) && (
+						<DropdownMenuItem onClick={props.onEdit}>
+							<HugeiconsIcon icon={FileEditIcon} size={15} strokeWidth={1.5} />
+							Edit
+						</DropdownMenuItem>
+					)}
 				{isFile && (
 					<DropdownMenuItem onClick={props.onDownload}>
 						<HugeiconsIcon
@@ -2261,21 +2119,24 @@ function EntryRow(props: EntryActions & { maxSize: number }) {
 			: 0;
 
 	return (
-		<div className="entry-row" data-selected={props.selected}>
-			<div className="entry-check">
-				<input
-					aria-label={`Select ${item.name}`}
-					checked={props.selected}
-					onChange={(event) => props.onSelect(event.target.checked)}
-					type="checkbox"
-				/>
-			</div>
+		<div
+			className={cn(
+				ENTRY_GRID,
+				"group/row relative h-14 w-full border-b text-left transition-colors hover:bg-muted/50",
+				props.selected && "bg-muted",
+			)}
+		>
+			<Checkbox
+				aria-label={`Select ${item.name}`}
+				checked={props.selected}
+				onCheckedChange={props.onSelect}
+			/>
 
 			<FileGlyph item={item} size="md" />
 
-			<div className="entry-main">
+			<div className="flex min-w-0 flex-col">
 				<button
-					className="entry-name"
+					className="truncate text-left font-medium text-sm hover:underline"
 					onClick={() => {
 						if (isFolder) {
 							props.onOpenFolder();
@@ -2292,30 +2153,35 @@ function EntryRow(props: EntryActions & { maxSize: number }) {
 				>
 					{item.name}
 				</button>
-				<span className="entry-meta">
+				<span className="truncate text-muted-foreground text-xs min-[900px]:hidden">
 					{isFolder
 						? "prefix"
 						: `${formatBytes(item.size)} · ${formatTimestamp(item.lastModified)}`}
 				</span>
 			</div>
 
-			<span className="ext-label entry-hide-sm">
+			<span
+				className={cn(
+					HIDE_SM,
+					"truncate font-mono text-muted-foreground text-xs uppercase",
+				)}
+			>
 				{isFolder ? "DIR" : extensionLabel(item) || "—"}
 			</span>
-			<span className="entry-cell entry-hide-sm">
+			<span className={cn(HIDE_SM, "truncate text-xs tabular-nums")}>
 				{isFolder ? "—" : formatBytes(item.size)}
 			</span>
-			<span className="entry-cell entry-cell-muted entry-hide-sm">
+			<span className={cn(HIDE_SM, "truncate text-muted-foreground text-xs")}>
 				{isFolder ? "—" : formatTimestamp(item.lastModified)}
 			</span>
 
-			<div className="entry-actions">
+			<div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100">
 				<EntryMenu {...props} />
 			</div>
 
 			{weight > 0 && (
 				<span
-					className="entry-weight"
+					className="absolute bottom-0 left-3 h-px bg-primary/40 transition-[width] duration-200"
 					style={{ width: `calc((100% - 24px) * ${weight / 100})` }}
 				/>
 			)}
@@ -2327,34 +2193,39 @@ function ObjectCard(props: EntryActions & { maxSize: number }) {
 	const { item } = props;
 	const isFolder = item.kind === "folder";
 	return (
-		<div className="object-card" data-selected={props.selected}>
-			<div className="flex items-start justify-between gap-2">
+		<Card
+			className={cn(
+				"gap-3 transition-colors hover:bg-muted/50",
+				props.selected && "bg-muted ring-primary/40",
+			)}
+			size="sm"
+		>
+			<CardContent className="flex items-start justify-between gap-2">
 				<FileGlyph item={item} size="lg" />
 				<div className="flex items-center gap-1">
-					<input
+					<Checkbox
 						aria-label={`Select ${item.name}`}
 						checked={props.selected}
-						onChange={(event) => props.onSelect(event.target.checked)}
-						type="checkbox"
+						onCheckedChange={props.onSelect}
 					/>
 					<EntryMenu {...props} />
 				</div>
-			</div>
-			<div className="min-w-0">
+			</CardContent>
+			<CardContent className="min-w-0">
 				<button
-					className="w-full object-card-title text-left"
+					className="w-full truncate text-left font-medium text-sm hover:underline"
 					onClick={isFolder ? props.onOpenFolder : props.onPreview}
 					title={item.name}
 					type="button"
 				>
 					{item.name}
 				</button>
-				<div className="mt-1 object-card-meta">
+				<div className="mt-1 truncate text-muted-foreground text-xs">
 					{isFolder
 						? "prefix"
 						: `${formatBytes(item.size)} · ${formatTimestamp(item.lastModified)}`}
 				</div>
-			</div>
-		</div>
+			</CardContent>
+		</Card>
 	);
 }

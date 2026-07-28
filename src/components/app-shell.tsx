@@ -4,20 +4,38 @@ import {
 	Folder02Icon,
 	HelpCircleIcon,
 	Moon02Icon,
-	SidebarLeft01Icon,
 	Sun01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import {
+	Sidebar,
+	SidebarContent,
+	SidebarFooter,
+	SidebarGroup,
+	SidebarGroupContent,
+	SidebarGroupLabel,
+	SidebarHeader,
+	SidebarInset,
+	SidebarMenu,
+	SidebarMenuButton,
+	SidebarMenuItem,
+	SidebarProvider,
+	SidebarRail,
+	SidebarTrigger,
+} from "@/components/ui/sidebar";
 import {
 	activeProviderQueryOptions,
 	providerQueryOptions,
 	transferQueryOptions,
 } from "../lib/query-options";
 import { applyTheme, readTheme, type Theme } from "../lib/theme";
-import { cn, formatBytes, shortProviderLabel } from "../lib/utils";
+import { formatBytes, shortProviderLabel } from "../lib/utils";
 
 const navItems = [
 	{ to: "/browse", label: "Browser", icon: Folder02Icon },
@@ -26,13 +44,6 @@ const navItems = [
 	{ to: "/help", label: "Help", icon: HelpCircleIcon },
 ] as const;
 
-const pageTitles: [prefix: string, title: string][] = [
-	["/browse", "Browser"],
-	["/providers", "Providers"],
-	["/transfers", "Transfers"],
-	["/help", "Help"],
-];
-
 export function AppShell() {
 	const providersQuery = useQuery(providerQueryOptions);
 	const activeProviderIdQuery = useQuery(activeProviderQueryOptions);
@@ -40,7 +51,6 @@ export function AppShell() {
 	const pathname = useRouterState({
 		select: (state) => state.location.pathname,
 	});
-	const [collapsed, setCollapsed] = useState(false);
 	const [theme, setTheme] = useState<Theme>(readTheme);
 
 	const providers = providersQuery.data ?? [];
@@ -56,9 +66,11 @@ export function AppShell() {
 		0,
 	);
 
+	// /edit is reached from the browser rather than the sidebar, so it has no nav
+	// item to take its title from.
 	const title =
-		pageTitles.find(([prefix]) => pathname.startsWith(prefix))?.[1] ??
-		"Overview";
+		navItems.find((item) => pathname.startsWith(item.to))?.label ??
+		(pathname.startsWith("/edit") ? "Editor" : "Overview");
 
 	function toggleTheme() {
 		const next: Theme = theme === "dark" ? "light" : "dark";
@@ -67,122 +79,93 @@ export function AppShell() {
 	}
 
 	return (
-		<div className="workspace-frame min-h-screen overflow-x-hidden">
-			<div
-				className={cn(
-					"app-shell workspace-shell mx-auto",
-					collapsed && "workspace-shell-collapsed",
-				)}
-			>
-				<aside
-					className={cn(
-						"shell-sidebar",
-						collapsed && "shell-sidebar-collapsed",
-					)}
-				>
-					<div className="shell-brand">
-						<div className="shell-brand-row">
-							<div className="shell-mark">S3</div>
-							{!collapsed && (
-								<button
-									className="sidebar-toggle"
-									onClick={() => setCollapsed(true)}
-									title="Collapse sidebar"
-									type="button"
-								>
-									<HugeiconsIcon
-										icon={SidebarLeft01Icon}
-										size={16}
-										strokeWidth={1.5}
-									/>
-								</button>
-							)}
+		<SidebarProvider>
+			<Sidebar collapsible="icon">
+				<SidebarHeader>
+					<div className="flex items-center gap-2 px-2 py-1 group-data-[collapsible=icon]:px-0">
+						<div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary font-semibold text-primary-foreground text-xs">
+							S3
 						</div>
-						{!collapsed && (
-							<span className="shell-badge">
+						<div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
+							<span className="truncate font-medium text-sm">S3 Multi</span>
+							<span className="truncate text-muted-foreground text-xs">
 								{activeProvider
 									? shortProviderLabel(activeProvider.type)
 									: "No provider"}
 							</span>
-						)}
+						</div>
 					</div>
+				</SidebarHeader>
 
-					<nav className="shell-nav">
-						{navItems.map((item) => (
-							<Link
-								key={item.to}
-								className={cn(
-									"nav-chip",
-									pathname.startsWith(item.to) && "nav-chip-active",
-								)}
-								title={collapsed ? item.label : undefined}
-								to={item.to}
-							>
-								<HugeiconsIcon icon={item.icon} size={16} strokeWidth={1.5} />
-								{!collapsed && (
-									<span className="nav-chip-label">{item.label}</span>
-								)}
-							</Link>
-						))}
-					</nav>
+				<SidebarContent>
+					<SidebarGroup>
+						<SidebarGroupLabel>Workspace</SidebarGroupLabel>
+						<SidebarGroupContent>
+							<SidebarMenu>
+								{navItems.map((item) => (
+									<SidebarMenuItem key={item.to}>
+										<SidebarMenuButton
+											isActive={pathname.startsWith(item.to)}
+											render={<Link to={item.to} />}
+											tooltip={item.label}
+										>
+											<HugeiconsIcon
+												icon={item.icon}
+												size={16}
+												strokeWidth={1.5}
+											/>
+											<span>{item.label}</span>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+								))}
+							</SidebarMenu>
+						</SidebarGroupContent>
+					</SidebarGroup>
+				</SidebarContent>
 
-					{!collapsed && (
-						<div className="shell-aside-note">
-							<div className="metric-label">Active provider</div>
-							<p>{activeProvider?.name ?? "None selected"}</p>
+				<SidebarFooter className="group-data-[collapsible=icon]:hidden">
+					<div className="rounded-md border p-2">
+						<div className="text-muted-foreground text-xs">Active provider</div>
+						<div className="mt-1 truncate font-medium text-sm">
+							{activeProvider?.name ?? "None selected"}
 						</div>
-					)}
-				</aside>
+					</div>
+				</SidebarFooter>
+				<SidebarRail />
+			</Sidebar>
 
-				<div className="shell-stage min-w-0">
-					<header className="overview-panel">
-						<div className="overview-intro">
-							{collapsed && (
-								<button
-									className="sidebar-toggle"
-									onClick={() => setCollapsed(false)}
-									title="Expand sidebar"
-									type="button"
-								>
-									<HugeiconsIcon
-										icon={SidebarLeft01Icon}
-										size={16}
-										strokeWidth={1.5}
-									/>
-								</button>
-							)}
-							<h2 className="overview-title">{title}</h2>
-						</div>
+			<SidebarInset className="min-w-0">
+				<header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+					<SidebarTrigger />
+					<Separator className="mr-1 h-4" orientation="vertical" />
+					<h2 className="font-semibold text-base">{title}</h2>
 
-						<div className="header-meta">
-							{runningTransfers > 0 && (
-								<div className="header-stat">
-									<span className="header-stat-value">{runningTransfers}</span>
-									<span className="header-stat-note">
-										active · {formatBytes(queuedBytes)}
-									</span>
-								</div>
-							)}
-							<button
-								className="icon-button"
-								onClick={toggleTheme}
-								title={theme === "dark" ? "Switch to light" : "Switch to dark"}
-								type="button"
-							>
-								<HugeiconsIcon
-									icon={theme === "dark" ? Sun01Icon : Moon02Icon}
-									size={16}
-									strokeWidth={1.5}
-								/>
-							</button>
-						</div>
-					</header>
+					<div className="ml-auto flex items-center gap-2">
+						{runningTransfers > 0 && (
+							<Badge variant="secondary">
+								{runningTransfers} active · {formatBytes(queuedBytes)}
+							</Badge>
+						)}
+						<Button
+							onClick={toggleTheme}
+							size="icon-sm"
+							title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+							type="button"
+							variant="ghost"
+						>
+							<HugeiconsIcon
+								icon={theme === "dark" ? Sun01Icon : Moon02Icon}
+								size={16}
+								strokeWidth={1.5}
+							/>
+						</Button>
+					</div>
+				</header>
 
-					<section className="shell-main min-w-0">
-						<Outlet />
-					</section>
-				</div>
-			</div>
-		</div>
+				<main className="min-w-0 flex-1 p-4">
+					<Outlet />
+				</main>
+			</SidebarInset>
+		</SidebarProvider>
 	);
 }
