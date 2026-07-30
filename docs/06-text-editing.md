@@ -10,9 +10,9 @@ Edit markdown, JSON, YAML, HTML, XML, CSV, and plain-text objects in place, in
 the browser, with no download/re-upload round trip.
 
 Editing is a **route, not a modal**: `/edit?providerId&bucket&key&prefix`
-(`src/routes/edit.tsx`). The browse dialog is a read-only quick look with an
-**Open in editor** button; the row overflow menu has an **Edit** entry. Editing
-used to live inside that dialog, and a full editor does not fit in one.
+(`src/routes/edit.tsx`). The browse preview drawer is a read-only quick look
+with an **Open in editor** button; the row overflow menu has an **Edit** entry.
+Editing used to live inside that preview, and a full editor does not fit in one.
 
 ## Eligibility
 
@@ -131,7 +131,7 @@ invisible. `richtext.check.ts` covers this.
 
 CodeMirror renders a diagnostic as a wavy underline on the offending token plus
 a gutter marker with the message on hover; the page header shows a red badge and
-the save dialog lists the messages. The squiggle is
+the save drawer lists the messages. The squiggle is
 `text-decoration: underline wavy` rather than CodeMirror's stock SVG background
 image — drawn by the text engine, so it stays crisp at any zoom and tracks the
 font. `text-decoration-skip-ink: none` keeps it continuous under descenders.
@@ -183,7 +183,7 @@ Sanitizing there would misrepresent the file the operator is editing.
 
 ## Save pipeline
 
-**Review & save** does not save. It opens the save dialog, which is the
+**Review & save** does not save. It opens the save drawer, which is the
 last-look-before-writing step:
 
 - the rendered preview of the buffer, plus the exact raw bytes behind a

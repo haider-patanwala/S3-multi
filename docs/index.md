@@ -32,6 +32,7 @@ this codebase correctly on the first try.
 | `failure-modes` | [09-failure-modes.md](09-failure-modes.md) | reference | Symptom → cause → fix catalogue |
 | `development` | [10-development.md](10-development.md) | reference | Commands, checks, adding a provider field, browser-verification traps |
 | `cache-control` | [11-cache-control.md](11-cache-control.md) | subsystem | Writing edge-cache headers vs always reading fresh — two opposite needs, two different params |
+| `deployment` | [12-deployment.md](12-deployment.md) | operations | Shipping the static bundle: HTTPS requirement, SPA fallback, CSP and CDN headers, browser floor |
 
 ---
 

@@ -91,7 +91,27 @@ Each one reports through `setStatusMessage` (success) or `setErrorMessage`
 (failure), and both are rendered — see [failure-modes](09-failure-modes.md) for
 why that sentence needs saying.
 
+## Location tabs
+
+Browser-style tabs above the toolbar (`BrowseTab` in `src/routes/browse.tsx`).
+Each tab remembers a place — provider, bucket, prefix, view — while the URL
+stays the source of truth for where you are *now*: an effect mirrors the
+resolved location into the active tab, so navigating (including a reload with
+a different URL) re-points the active tab rather than fighting it. The set
+lives in `sessionStorage` (`browse-tabs`) so a round-trip through `/edit` —
+which unmounts this route — restores it. The last tab cannot be closed;
+closing the active tab activates its left neighbour. Folders get an **Open in
+new tab** row in the overflow menu.
+
 ## Preview
+
+The quick look renders in a right-side drawer (`Sheet`), not a modal, so the
+listing stays visible behind it. `previewMutation.onMutate` sets `previewKey`,
+which opens the drawer immediately with a skeleton while the object downloads;
+`onError` closes it again so a failure is only the error banner, never an empty
+drawer on top of one. The drawer header shows the key, a metadata strip shows
+type/size/modified, and the footer carries Download, Copy URL, Purge cache and
+Open in editor.
 
 `previewMutation` calls `previewObject`, which returns a blob URL. For editable
 text types it also reads the text into `textPreview` (the pristine baseline) and
@@ -102,8 +122,11 @@ preview, and on Close. Adding a fourth exit path from the preview means adding a
 fourth revoke, or leaking memory.
 
 Renderers, by content type: `image/*` → `<img>`; `video/*` → `<video>` (with an
-empty VTT captions track so the element is accessible); editable text → the
-editor, see [text-editing](06-text-editing.md); everything else → `<iframe>`.
+empty VTT captions track so the element is accessible); editable text →
+`RichTextViewer` (Markdown and HTML render as documents, the rest as source —
+the same component as the editor's Preview tab, see
+[text-editing](06-text-editing.md)); everything else → `<iframe>`. The raw
+bytes are one click away via **Open in editor** in the drawer footer.
 
 ## Relations
 

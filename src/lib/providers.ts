@@ -35,6 +35,7 @@ async function toConfig(record: ProviderRecord): Promise<ProviderConfig> {
 			? await decryptSecret(record.cloudflareApiTokenEncrypted)
 			: undefined,
 		publicBaseUrl: record.publicBaseUrl,
+		bucketDomains: record.bucketDomains,
 		defaultCacheControl: record.defaultCacheControl,
 		createdAt: record.createdAt,
 		lastUsedAt: record.lastUsedAt,
@@ -52,6 +53,14 @@ export async function getProvider(providerId: string) {
 	return record ? toConfig(record) : undefined;
 }
 
+/** Trim entries and strip trailing slashes; empty map becomes undefined. */
+function normalizeBucketDomains(domains?: Record<string, string>) {
+	const entries = Object.entries(domains ?? {})
+		.map(([name, domain]) => [name, domain.trim().replace(/\/+$/, "")] as const)
+		.filter(([, domain]) => domain);
+	return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
 export async function saveProvider(draft: ProviderDraft) {
 	const createdAt = draft.createdAt ?? Date.now();
 	const record: ProviderRecord = {
@@ -67,6 +76,7 @@ export async function saveProvider(draft: ProviderDraft) {
 			draft.cloudFrontDistributionId?.trim() || undefined,
 		cloudflareZoneId: draft.cloudflareZoneId?.trim() || undefined,
 		publicBaseUrl: draft.publicBaseUrl?.trim().replace(/\/+$/, "") || undefined,
+		bucketDomains: normalizeBucketDomains(draft.bucketDomains),
 		defaultCacheControl: draft.defaultCacheControl?.trim() || undefined,
 		createdAt,
 		lastUsedAt: Date.now(),

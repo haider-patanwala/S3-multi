@@ -12,6 +12,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { suggestCacheControl } from "./cache-control";
+import { cdnUrlForKey } from "./cdn";
 import type {
 	ObjectEntry,
 	ObjectPreview,
@@ -164,6 +165,13 @@ export function buildObjectUrl(
 	bucket: string,
 	key: string,
 ) {
+	// A configured public domain is the URL the operator actually shares;
+	// endpoint URLs are the fallback for buckets without one.
+	const cdnUrl = cdnUrlForKey(provider, key, bucket);
+	if (cdnUrl) {
+		return cdnUrl;
+	}
+
 	const encodedKey = key
 		.split("/")
 		.map((segment) => encodeURIComponent(segment))
@@ -503,7 +511,7 @@ export async function putObjectText(
 			Body: text,
 			ContentType:
 				contentType || existing?.ContentType || resolveObjectContentType(key),
-			// An explicit value wins so the save dialog can change caching; falling
+			// An explicit value wins so the save drawer can change caching; falling
 			// back to the existing header keeps an untouched object untouched.
 			CacheControl: cacheControl || existing?.CacheControl,
 			ContentDisposition: existing?.ContentDisposition,

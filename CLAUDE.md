@@ -28,6 +28,7 @@ graph, task-based reading paths, and the project invariants.
 | `09-failure-modes.md` | Symptom → cause → fix catalogue |
 | `10-development.md` | Commands, recipes, verification traps |
 | `11-cache-control.md` | Edge-cache headers vs always-fresh reads |
+| `12-deployment.md` | Static hosting: HTTPS requirement, SPA fallback, CSP/CDN headers |
 
 Pick the reading path from `index.md` rather than reading everything. For a bug
 report, `09-failure-modes.md` first — the symptom is usually already catalogued
@@ -42,7 +43,7 @@ change.**
 ## Before you commit
 
 ```bash
-pnpm lint:error && npx tsc --noEmit && node src/lib/cdn.check.ts && node src/lib/richtext.check.ts
+pnpm lint:error && npx tsc --noEmit && node src/lib/cdn.check.ts && node src/lib/richtext.check.ts && node src/lib/utils.check.ts
 ```
 
 Never run `pnpm lint` (`biome check --write`) on a file that does not parse — it

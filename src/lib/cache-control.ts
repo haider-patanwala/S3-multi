@@ -7,7 +7,7 @@ import { extensionForKey } from "./utils";
  * answers for free until the TTL expires.
  *
  * The cost of a long TTL is staleness after an edit, which is what the purge
- * command in the save dialog is for.
+ * command in the save drawer is for.
  */
 export type CachePreset = {
 	label: string;

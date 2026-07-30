@@ -54,6 +54,9 @@ export function AppShell() {
 	const [theme, setTheme] = useState<Theme>(readTheme);
 
 	const providers = providersQuery.data ?? [];
+	const activeNavIndex = navItems.findIndex((item) =>
+		pathname.startsWith(item.to),
+	);
 	const activeProvider = providers.find(
 		(provider) => provider.id === activeProviderIdQuery.data,
 	);
@@ -101,10 +104,25 @@ export function AppShell() {
 					<SidebarGroup>
 						<SidebarGroupLabel>Workspace</SidebarGroupLabel>
 						<SidebarGroupContent>
-							<SidebarMenu>
+							<SidebarMenu className="relative">
+								{/* The active-tab pill. One element slides between rows on a
+								    CSS transition with an overshoot curve (the spring); React
+								    only sets the target offset. Rows are 32px tall, gap-0.
+								    Hidden when collapsed to icons, where the buttons fall
+								    back to their own active background. */}
+								{activeNavIndex >= 0 && (
+									<li
+										aria-hidden
+										className="pointer-events-none absolute top-0 left-0 h-8 w-full rounded-md bg-card shadow-sm ring-1 ring-foreground/10 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[collapsible=icon]:hidden dark:bg-sidebar-accent dark:shadow-none dark:ring-0"
+										style={{
+											transform: `translateY(${activeNavIndex * 32}px)`,
+										}}
+									/>
+								)}
 								{navItems.map((item) => (
 									<SidebarMenuItem key={item.to}>
 										<SidebarMenuButton
+											className="relative z-10 transition-all duration-200 hover:translate-x-0.5 data-active:bg-transparent data-active:hover:translate-x-0 group-data-[collapsible=icon]:data-active:bg-sidebar-accent"
 											isActive={pathname.startsWith(item.to)}
 											render={<Link to={item.to} />}
 											tooltip={item.label}
@@ -124,9 +142,9 @@ export function AppShell() {
 				</SidebarContent>
 
 				<SidebarFooter className="group-data-[collapsible=icon]:hidden">
-					<div className="rounded-md border p-2">
+					<div className="rounded-lg border bg-card p-2.5 shadow-xs">
 						<div className="text-muted-foreground text-xs">Active provider</div>
-						<div className="mt-1 truncate font-medium text-sm">
+						<div className="mt-0.5 truncate font-medium text-sm">
 							{activeProvider?.name ?? "None selected"}
 						</div>
 					</div>
@@ -135,10 +153,12 @@ export function AppShell() {
 			</Sidebar>
 
 			<SidebarInset className="min-w-0">
-				<header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+				{/* Sticky glass bar: content scrolls under it, the blur + hairline
+				    shadow keep it reading as its own layer above the canvas. */}
+				<header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/85 px-4 shadow-2xs backdrop-blur-md">
 					<SidebarTrigger />
 					<Separator className="mr-1 h-4" orientation="vertical" />
-					<h2 className="font-semibold text-base">{title}</h2>
+					<h2 className="font-semibold text-[15px] tracking-tight">{title}</h2>
 
 					<div className="ml-auto flex items-center gap-2">
 						{runningTransfers > 0 && (
@@ -162,7 +182,7 @@ export function AppShell() {
 					</div>
 				</header>
 
-				<main className="min-w-0 flex-1 p-4">
+				<main className="min-w-0 flex-1 px-6 py-5">
 					<Outlet />
 				</main>
 			</SidebarInset>

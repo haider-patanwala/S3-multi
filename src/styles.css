@@ -1,4 +1,12 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+/*
+ * No webfont import on purpose. This app holds decryptable cloud credentials
+ * and promises that nothing leaves the browser but calls to your storage
+ * provider — a render-blocking fetch to fonts.googleapis.com on every boot
+ * contradicts that, breaks offline/air-gapped use, fails in regions that block
+ * Google, and forces a CSP hole for two more origins. `--font-sans` below
+ * starts with Inter, so it is still used when installed locally, and falls
+ * back to the platform UI face (SF Pro / Segoe UI / Roboto) everywhere else.
+ */
 @import "tailwindcss" source("../");
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -13,7 +21,12 @@
 :root {
 	--radius: 0.625rem;
 
-	--background: oklch(1 0 0);
+	/*
+	 * Depth model (light): the canvas is off-white and every raised surface —
+	 * card, popover, drawer — is pure white with a soft layered shadow, so
+	 * elevation reads as a few points of lightness plus lift, never a hard line.
+	 */
+	--background: oklch(0.975 0 0);
 	--foreground: oklch(0.145 0 0);
 	--card: oklch(1 0 0);
 	--card-foreground: oklch(0.145 0 0);
@@ -21,11 +34,11 @@
 	--popover-foreground: oklch(0.145 0 0);
 	--primary: oklch(0.205 0 0);
 	--primary-foreground: oklch(0.985 0 0);
-	--secondary: oklch(0.97 0 0);
+	--secondary: oklch(0.955 0 0);
 	--secondary-foreground: oklch(0.205 0 0);
-	--muted: oklch(0.97 0 0);
-	--muted-foreground: oklch(0.556 0 0);
-	--accent: oklch(0.97 0 0);
+	--muted: oklch(0.955 0 0);
+	--muted-foreground: oklch(0.5 0 0);
+	--accent: oklch(0.955 0 0);
 	--accent-foreground: oklch(0.205 0 0);
 	--destructive: oklch(0.577 0.245 27.325);
 	--destructive-foreground: oklch(0.985 0 0);
@@ -39,11 +52,12 @@
 	--chart-4: oklch(0.828 0.189 84.429);
 	--chart-5: oklch(0.769 0.188 70.08);
 
-	--sidebar: oklch(0.985 0 0);
+	/* Same tone as the canvas — a border separates it, not a colour change. */
+	--sidebar: oklch(0.975 0 0);
 	--sidebar-foreground: oklch(0.145 0 0);
 	--sidebar-primary: oklch(0.205 0 0);
 	--sidebar-primary-foreground: oklch(0.985 0 0);
-	--sidebar-accent: oklch(0.97 0 0);
+	--sidebar-accent: oklch(0.94 0 0);
 	--sidebar-accent-foreground: oklch(0.205 0 0);
 	--sidebar-border: oklch(0.922 0 0);
 	--sidebar-ring: oklch(0.708 0 0);
@@ -52,18 +66,21 @@
 	--font-mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", monospace;
 	--font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
 
-	--shadow-2xs: 0 1px 3px 0 hsl(0 0% 0% / 0.05);
-	--shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.05);
+	/* Layered: a tight contact line plus a soft ambient falloff, so lift reads
+	   as light on a surface rather than a dark outline. */
+	--shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.04);
+	--shadow-xs:
+		0 1px 2px 0 hsl(0 0% 0% / 0.05), 0 2px 6px -2px hsl(0 0% 0% / 0.05);
 	--shadow-sm:
-		0 1px 3px 0 hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-	--shadow: 0 1px 3px 0 hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+		0 1px 2px 0 hsl(0 0% 0% / 0.06), 0 3px 8px -2px hsl(0 0% 0% / 0.07);
+	--shadow: 0 1px 2px 0 hsl(0 0% 0% / 0.06), 0 3px 8px -2px hsl(0 0% 0% / 0.07);
 	--shadow-md:
-		0 1px 3px 0 hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
+		0 1px 2px 0 hsl(0 0% 0% / 0.06), 0 6px 16px -4px hsl(0 0% 0% / 0.1);
 	--shadow-lg:
-		0 1px 3px 0 hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
+		0 1px 3px 0 hsl(0 0% 0% / 0.07), 0 12px 28px -8px hsl(0 0% 0% / 0.14);
 	--shadow-xl:
-		0 1px 3px 0 hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-	--shadow-2xl: 0 1px 3px 0 hsl(0 0% 0% / 0.25);
+		0 2px 4px 0 hsl(0 0% 0% / 0.08), 0 20px 44px -12px hsl(0 0% 0% / 0.18);
+	--shadow-2xl: 0 24px 56px -12px hsl(0 0% 0% / 0.24);
 
 	--tracking-normal: 0em;
 	--spacing: 0.25rem;
@@ -181,6 +198,15 @@
 
 	#app {
 		min-height: 100vh;
+	}
+
+	/* Headings tighten up; body copy stays open. Size alone is not hierarchy. */
+	h1,
+	h2,
+	h3,
+	h4 {
+		letter-spacing: -0.02em;
+		text-wrap: balance;
 	}
 
 	button,

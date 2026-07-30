@@ -13,7 +13,7 @@ export const CODE_BLOCK =
  * would double both.
  *
  * `className` sets the height, because the two callers differ: the editor page
- * fills the viewport, the save dialog gets a short scroll pane.
+ * fills the viewport, the save drawer gets a short scroll pane.
  */
 export function RichTextViewer({
 	text,

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { HelpTip } from "@/components/help-tip";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,12 +20,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import {
-	Field,
-	FieldDescription,
-	FieldGroup,
-	FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -48,7 +44,7 @@ import {
 } from "../lib/query-options";
 import { testConnection } from "../lib/s3";
 import type { ProviderConfig, ProviderDraft, ProviderType } from "../lib/types";
-import { cn, shortProviderLabel } from "../lib/utils";
+import { cn, redactSecrets, shortProviderLabel } from "../lib/utils";
 
 export const Route = createFileRoute("/providers")({
 	component: ProvidersPage,
@@ -67,17 +63,12 @@ type FormState = {
 	forcePathStyle: boolean;
 	defaultCacheControl: string;
 	createdAt?: number;
-	/**
-	 * CDN/purge settings live in the browser's Purge dialog, not on this form.
-	 * They are carried through here so saving a provider does not wipe them.
-	 */
-	cdn: Pick<
-		ProviderConfig,
-		| "cloudFrontDistributionId"
-		| "cloudflareZoneId"
-		| "cloudflareApiToken"
-		| "publicBaseUrl"
-	>;
+	cloudFrontDistributionId: string;
+	cloudflareZoneId: string;
+	cloudflareApiToken: string;
+	publicBaseUrl: string;
+	/** bucket name → custom domain serving it. */
+	bucketDomains: Record<string, string>;
 };
 
 const blankForm: FormState = {
@@ -91,7 +82,11 @@ const blankForm: FormState = {
 	defaultBucket: "",
 	forcePathStyle: false,
 	defaultCacheControl: "",
-	cdn: {},
+	cloudFrontDistributionId: "",
+	cloudflareZoneId: "",
+	cloudflareApiToken: "",
+	publicBaseUrl: "",
+	bucketDomains: {},
 };
 
 function toForm(provider?: ProviderConfig): FormState {
@@ -111,18 +106,23 @@ function toForm(provider?: ProviderConfig): FormState {
 		forcePathStyle: provider.forcePathStyle ?? false,
 		defaultCacheControl: provider.defaultCacheControl ?? "",
 		createdAt: provider.createdAt,
-		cdn: {
-			cloudFrontDistributionId: provider.cloudFrontDistributionId,
-			cloudflareZoneId: provider.cloudflareZoneId,
-			cloudflareApiToken: provider.cloudflareApiToken,
-			publicBaseUrl: provider.publicBaseUrl,
-		},
+		cloudFrontDistributionId: provider.cloudFrontDistributionId ?? "",
+		cloudflareZoneId: provider.cloudflareZoneId ?? "",
+		cloudflareApiToken: provider.cloudflareApiToken ?? "",
+		publicBaseUrl: provider.publicBaseUrl ?? "",
+		bucketDomains: provider.bucketDomains ?? {},
 	};
 }
 
 function toDraft(form: FormState): ProviderDraft {
 	const buckets = form.buckets.filter(Boolean);
 	const defaultBucket = form.defaultBucket || buckets[0] || undefined;
+	// Keep only non-empty domains for buckets still on the list.
+	const bucketDomains = Object.fromEntries(
+		buckets
+			.map((name) => [name, form.bucketDomains[name]?.trim() ?? ""] as const)
+			.filter(([, domain]) => domain),
+	);
 	return {
 		id: form.id ?? crypto.randomUUID(),
 		name: form.name,
@@ -136,7 +136,13 @@ function toDraft(form: FormState): ProviderDraft {
 		forcePathStyle: form.forcePathStyle,
 		defaultCacheControl: form.defaultCacheControl.trim() || undefined,
 		createdAt: form.createdAt,
-		...form.cdn,
+		cloudFrontDistributionId: form.cloudFrontDistributionId.trim() || undefined,
+		cloudflareZoneId: form.cloudflareZoneId.trim() || undefined,
+		cloudflareApiToken: form.cloudflareApiToken.trim() || undefined,
+		publicBaseUrl: form.publicBaseUrl.trim() || undefined,
+		bucketDomains: Object.keys(bucketDomains).length
+			? bucketDomains
+			: undefined,
 	};
 }
 
@@ -169,6 +175,16 @@ function ProvidersPage() {
 	});
 	const [pendingDelete, setPendingDelete] = useState<ProviderConfig>();
 
+	// Every message rendered from an error goes through this, so a credential
+	// quoted back by the SDK never reaches the screen.
+	const redact = (message: string) =>
+		redactSecrets(
+			message,
+			form.secretAccessKey,
+			form.accessKeyId,
+			form.cloudflareApiToken,
+		);
+
 	useEffect(() => {
 		if (!selectedId && providers[0]) {
 			setSelectedId(providers[0].id);
@@ -191,7 +207,9 @@ function ProvidersPage() {
 			return saved;
 		},
 		onSuccess: async (saved) => {
-			setNotice({ text: `Stored ${saved.name} with encrypted credentials.` });
+			setNotice({
+				text: `Stored ${saved.name} in this browser's vault.`,
+			});
 			setSelectedId(saved.id);
 			await queryClient.invalidateQueries({ queryKey: ["providers"] });
 			await queryClient.invalidateQueries({
@@ -200,7 +218,9 @@ function ProvidersPage() {
 		},
 		onError: (error) => {
 			setNotice({
-				text: error instanceof Error ? error.message : "Provider save failed.",
+				text: redact(
+					error instanceof Error ? error.message : "Provider save failed.",
+				),
 				error: true,
 			});
 		},
@@ -219,10 +239,9 @@ function ProvidersPage() {
 		},
 		onError: (error) => {
 			setNotice({
-				text:
-					error instanceof Error
-						? error.message.replace(form.secretAccessKey, "[redacted]")
-						: "Connection test failed.",
+				text: redact(
+					error instanceof Error ? error.message : "Connection test failed.",
+				),
 				error: true,
 			});
 		},
@@ -463,7 +482,15 @@ function ProvidersPage() {
 							</Field>
 
 							<Field>
-								<FieldLabel htmlFor="secret-key">Secret access key</FieldLabel>
+								<div className="flex items-center gap-1">
+									<FieldLabel htmlFor="secret-key">
+										Secret access key
+									</FieldLabel>
+									<HelpTip>
+										AES-GCM encrypted in this browser's IndexedDB and never sent
+										anywhere but your storage provider.
+									</HelpTip>
+								</div>
 								<Input
 									autoComplete="off"
 									id="secret-key"
@@ -477,9 +504,6 @@ function ProvidersPage() {
 									type="password"
 									value={form.secretAccessKey}
 								/>
-								<FieldDescription>
-									Never sent anywhere but your storage provider.
-								</FieldDescription>
 							</Field>
 
 							<Field>
@@ -516,8 +540,126 @@ function ProvidersPage() {
 								/>
 							</Field>
 
+							{form.type === "aws" ? (
+								<Field>
+									<div className="flex items-center gap-1">
+										<FieldLabel htmlFor="cf-dist-id">
+											CloudFront distribution
+										</FieldLabel>
+										<HelpTip>
+											AWS Console → CloudFront → Distributions → copy the ID of
+											the distribution serving this bucket. Lets saves and the
+											Purge dialog invalidate the CDN in-app; the access key
+											needs <code>cloudfront:CreateInvalidation</code>.
+										</HelpTip>
+									</div>
+									<Input
+										id="cf-dist-id"
+										onChange={(event) =>
+											setForm((current) => ({
+												...current,
+												cloudFrontDistributionId: event.target.value,
+											}))
+										}
+										placeholder="E1A2B3C4D5E6F7 (optional)"
+										value={form.cloudFrontDistributionId}
+									/>
+								</Field>
+							) : null}
+
+							{form.type === "r2" ? (
+								<>
+									<Field>
+										<div className="flex items-center gap-1">
+											<FieldLabel htmlFor="cf-zone-id">
+												Cloudflare Zone ID
+											</FieldLabel>
+											<HelpTip>
+												Cloudflare dashboard → your domain → Overview → API
+												panel on the right. Used to build the purge command
+												after a save.
+											</HelpTip>
+										</div>
+										<Input
+											id="cf-zone-id"
+											onChange={(event) =>
+												setForm((current) => ({
+													...current,
+													cloudflareZoneId: event.target.value,
+												}))
+											}
+											placeholder="0123456789abcdef… (optional)"
+											value={form.cloudflareZoneId}
+										/>
+									</Field>
+									<Field>
+										<div className="flex items-center gap-1">
+											<FieldLabel htmlFor="cf-api-token">
+												Cloudflare API token
+											</FieldLabel>
+											<HelpTip>
+												My Profile → API Tokens → Create Token with{" "}
+												<code>Zone · Cache Purge</code> for this zone only.
+												Stored AES-GCM encrypted in this browser, and filled
+												into the purge command so it is ready to run.
+											</HelpTip>
+										</div>
+										<Input
+											autoComplete="off"
+											id="cf-api-token"
+											onChange={(event) =>
+												setForm((current) => ({
+													...current,
+													cloudflareApiToken: event.target.value,
+												}))
+											}
+											placeholder="Encrypted at rest (optional)"
+											type="password"
+											value={form.cloudflareApiToken}
+										/>
+									</Field>
+								</>
+							) : null}
+
+							<Field
+								className={
+									form.type === "r2" ? undefined : "@md/field-group:col-span-2"
+								}
+							>
+								<div className="flex items-center gap-1">
+									<FieldLabel htmlFor="public-base-url">
+										Public domain
+									</FieldLabel>
+									<HelpTip>
+										The domain visitors load these objects from, e.g.{" "}
+										<code>https://cdn.example.com</code>. Used for Copy URL and
+										to purge single files instead of everything. Buckets can
+										override it below.
+									</HelpTip>
+								</div>
+								<Input
+									id="public-base-url"
+									onChange={(event) =>
+										setForm((current) => ({
+											...current,
+											publicBaseUrl: event.target.value,
+										}))
+									}
+									placeholder="https://cdn.example.com (optional)"
+									value={form.publicBaseUrl}
+								/>
+							</Field>
+
 							<Field className="@md/field-group:col-span-2">
-								<FieldLabel htmlFor="bucket-input">Buckets</FieldLabel>
+								<div className="flex items-center gap-1">
+									<FieldLabel htmlFor="bucket-input">Buckets</FieldLabel>
+									<HelpTip>
+										Pre-define buckets for this provider — recommended for R2
+										and custom endpoints, where bucket listing may be blocked.
+										Each bucket can carry its own custom domain, which wins over
+										the provider's public domain.
+									</HelpTip>
+								</div>
 								<div className="flex gap-2">
 									<Input
 										id="bucket-input"
@@ -541,67 +683,87 @@ function ProvidersPage() {
 											const isDefault = name === form.defaultBucket;
 											return (
 												<div
-													className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5"
+													className="space-y-1.5 rounded-md px-2 py-1.5"
 													key={name}
 												>
-													<div className="flex min-w-0 items-center gap-2">
-														<span className="truncate text-sm">{name}</span>
-														{isDefault && <Badge>Default</Badge>}
-													</div>
-													<div className="flex shrink-0 gap-1">
-														{!isDefault && (
+													<div className="flex items-center justify-between gap-2">
+														<div className="flex min-w-0 items-center gap-2">
+															<span className="truncate text-sm">{name}</span>
+															{isDefault && <Badge>Default</Badge>}
+														</div>
+														<div className="flex shrink-0 gap-1">
+															{!isDefault && (
+																<Button
+																	onClick={() =>
+																		setForm((current) => ({
+																			...current,
+																			defaultBucket: name,
+																		}))
+																	}
+																	size="xs"
+																	type="button"
+																	variant="ghost"
+																>
+																	Set default
+																</Button>
+															)}
 															<Button
 																onClick={() =>
-																	setForm((current) => ({
-																		...current,
-																		defaultBucket: name,
-																	}))
+																	setForm((current) => {
+																		const next = current.buckets.filter(
+																			(b) => b !== name,
+																		);
+																		return {
+																			...current,
+																			buckets: next,
+																			defaultBucket:
+																				current.defaultBucket === name
+																					? (next[0] ?? "")
+																					: current.defaultBucket,
+																		};
+																	})
 																}
 																size="xs"
 																type="button"
-																variant="ghost"
+																variant="destructive"
 															>
-																Set default
+																Remove
 															</Button>
-														)}
-														<Button
-															onClick={() =>
-																setForm((current) => {
-																	const next = current.buckets.filter(
-																		(b) => b !== name,
-																	);
-																	return {
-																		...current,
-																		buckets: next,
-																		defaultBucket:
-																			current.defaultBucket === name
-																				? (next[0] ?? "")
-																				: current.defaultBucket,
-																	};
-																})
-															}
-															size="xs"
-															type="button"
-															variant="destructive"
-														>
-															Remove
-														</Button>
+														</div>
 													</div>
+													<Input
+														aria-label={`Custom domain for ${name}`}
+														className="h-7 text-xs"
+														onChange={(event) =>
+															setForm((current) => ({
+																...current,
+																bucketDomains: {
+																	...current.bucketDomains,
+																	[name]: event.target.value,
+																},
+															}))
+														}
+														placeholder="Custom domain — https://assets.example.com (optional)"
+														value={form.bucketDomains[name] ?? ""}
+													/>
 												</div>
 											);
 										})}
 									</div>
 								)}
-								<FieldDescription>
-									Pre-define buckets for this provider. Recommended for R2 and
-									custom endpoints where bucket listing may not be available.
-								</FieldDescription>
 							</Field>
 
 							<Field className="@md/field-group:col-span-2">
-								<FieldLabel htmlFor="cache-control">
-									Default Cache-Control
-								</FieldLabel>
+								<div className="flex items-center gap-1">
+									<FieldLabel htmlFor="cache-control">
+										Default Cache-Control
+									</FieldLabel>
+									<HelpTip>
+										Written on every upload and offered when saving an edit.
+										Leave empty to pick per file type — long for media, short
+										for editable text.
+									</HelpTip>
+								</div>
 								<ToggleGroup
 									onValueChange={(value: string[]) =>
 										setForm((current) => ({
@@ -635,11 +797,6 @@ function ProvidersPage() {
 									placeholder="public, max-age=31536000, immutable"
 									value={form.defaultCacheControl}
 								/>
-								<FieldDescription>
-									Written on every upload, and offered when saving an edit.
-									Empty picks per file type — long for media, short for editable
-									text.
-								</FieldDescription>
 							</Field>
 
 							<Field
@@ -656,12 +813,12 @@ function ProvidersPage() {
 										}))
 									}
 								/>
-								<div>
+								<div className="flex items-center gap-1">
 									<FieldLabel htmlFor="path-style">Path style</FieldLabel>
-									<FieldDescription>
+									<HelpTip>
 										R2 uses path-style internally. This toggle is mainly for
 										custom S3 endpoints such as MinIO.
-									</FieldDescription>
+									</HelpTip>
 								</div>
 							</Field>
 						</FieldGroup>

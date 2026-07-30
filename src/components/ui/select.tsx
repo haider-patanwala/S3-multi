@@ -3,7 +3,6 @@ import {
 	ArrowDown01Icon,
 	ArrowUp01Icon,
 	Tick02Icon,
-	UnfoldMoreIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type * as React from "react";
@@ -44,7 +43,7 @@ function SelectTrigger({
 			data-slot="select-trigger"
 			data-size={size}
 			className={cn(
-				"flex w-fit select-none items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=default]:h-8 data-[size=sm]:h-7 data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-placeholder:text-muted-foreground *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 dark:hover:bg-input/50 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+				"flex w-fit select-none items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border border-transparent bg-background py-2 pr-2 pl-2.5 text-sm shadow-2xs outline-none transition-all duration-200 hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=default]:h-8 data-[size=sm]:h-7 data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-placeholder:text-muted-foreground *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 dark:hover:bg-input/50 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 				className,
 			)}
 			{...props}
@@ -53,9 +52,9 @@ function SelectTrigger({
 			<SelectPrimitive.Icon
 				render={
 					<HugeiconsIcon
-						icon={UnfoldMoreIcon}
+						icon={ArrowDown01Icon}
 						strokeWidth={2}
-						className="pointer-events-none size-4 text-muted-foreground"
+						className="pointer-events-none size-4 in-data-popup-open:rotate-180 text-muted-foreground transition-transform duration-200"
 					/>
 				}
 			/>
@@ -70,7 +69,10 @@ function SelectContent({
 	sideOffset = 4,
 	align = "center",
 	alignOffset = 0,
-	alignItemWithTrigger = true,
+	// Menu-style by default: the popup drops in below the trigger with the
+	// entrance animation. Trigger-aligned mode suppresses animation entirely
+	// (see data-[align-trigger=true]:animate-none), which read as dead.
+	alignItemWithTrigger = false,
 	...props
 }: SelectPrimitive.Popup.Props &
 	Pick<
@@ -91,13 +93,15 @@ function SelectContent({
 					data-slot="select-content"
 					data-align-trigger={alignItemWithTrigger}
 					className={cn(
-						"data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-y-auto overflow-x-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[align-trigger=true]:animate-none data-closed:animate-out data-open:animate-in",
+						"data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-y-auto overflow-x-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] data-[align-trigger=true]:animate-none data-closed:animate-out data-open:animate-in data-closed:duration-150",
 						className,
 					)}
 					{...props}
 				>
 					<SelectScrollUpButton />
-					<SelectPrimitive.List>{children}</SelectPrimitive.List>
+					<SelectPrimitive.List className="p-1">
+						{children}
+					</SelectPrimitive.List>
 					<SelectScrollDownButton />
 				</SelectPrimitive.Popup>
 			</SelectPrimitive.Positioner>

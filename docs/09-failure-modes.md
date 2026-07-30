@@ -57,7 +57,7 @@ of going through `putObjectText`.
 
 The CDN edge cache — layer ④. In-app auto-purge only runs for AWS
 (`canPurge(provider)`). For R2 the save reports `"CDN not purged — copy the
-command from the save dialog and run it."` — run it. See
+command from the save drawer and run it."` — run it. See
 [cdn-purge](07-cdn-purge.md).
 
 ### Saved file is truncated or garbled with non-ASCII content

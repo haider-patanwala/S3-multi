@@ -2,8 +2,19 @@ export type Theme = "dark" | "light";
 
 const STORAGE_KEY = "s3m-theme";
 
+/*
+ * Storage access throws, not returns null, when the browser blocks it —
+ * hardened Firefox, Safari in a third-party frame, some private modes. These
+ * run before React mounts (see applyTheme's note), so an uncaught SecurityError
+ * here is a white screen rather than a wrong theme. Failing to the default is
+ * always the right trade.
+ */
 export function readTheme(): Theme {
-	return localStorage.getItem(STORAGE_KEY) === "light" ? "light" : "dark";
+	try {
+		return localStorage.getItem(STORAGE_KEY) === "light" ? "light" : "dark";
+	} catch {
+		return "dark";
+	}
 }
 
 /**
@@ -19,5 +30,9 @@ export function applyTheme(theme: Theme) {
 	const root = document.documentElement;
 	root.classList.toggle("dark", theme === "dark");
 	root.style.colorScheme = theme;
-	localStorage.setItem(STORAGE_KEY, theme);
+	try {
+		localStorage.setItem(STORAGE_KEY, theme);
+	} catch {
+		// Theme still applies for this session; it just will not be remembered.
+	}
 }

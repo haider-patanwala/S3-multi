@@ -12,18 +12,19 @@ import {
 } from "react";
 import { z } from "zod";
 import { CODE_BLOCK, RichTextViewer } from "../components/rich-text-viewer";
+import { TerminalBlock } from "../components/terminal-block";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
+import {
+	Sheet,
+	SheetContent,
+	SheetDescription,
+	SheetFooter,
+	SheetHeader,
+	SheetTitle,
+} from "../components/ui/sheet";
 import { Skeleton } from "../components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import {
@@ -137,7 +138,7 @@ function EditPage() {
 		setMode(canEditRich ? "rich" : "code");
 	}, [canEditRich]);
 
-	// Diagnostics drive the header badge and the warning in the save dialog. A
+	// Diagnostics drive the header badge and the warning in the save drawer. A
 	// syntax error never blocks a save — sometimes the point of an edit is to
 	// hand-fix a file the parser hates — but it must never be invisible either.
 	useEffect(() => {
@@ -174,8 +175,14 @@ function EditPage() {
 		) {
 			return undefined;
 		}
-		return buildPurgeCommand(provider, [search.key]);
-	}, [provider, search.key, sourceQuery.data?.cacheControl, saveCacheControl]);
+		return buildPurgeCommand(provider, [search.key], search.bucket);
+	}, [
+		provider,
+		search.key,
+		search.bucket,
+		sourceQuery.data?.cacheControl,
+		saveCacheControl,
+	]);
 
 	const applyFormat = useCallback(() => {
 		formatText(text, lang)
@@ -230,7 +237,7 @@ function EditPage() {
 				saved: text,
 				cacheControl,
 				purge: needsManualPurge
-					? "CDN not purged — copy the command from the save dialog and run it."
+					? "CDN not purged — copy the command from the save drawer and run it."
 					: undefined,
 			};
 		},
@@ -388,7 +395,7 @@ function EditPage() {
 				</Alert>
 			) : null}
 
-			<div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card">
+			<div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card shadow-xs">
 				{sourceQuery.isPending ? (
 					<div className="flex flex-col gap-3 p-6">
 						<Skeleton className="h-5 w-1/3" />
@@ -420,138 +427,128 @@ function EditPage() {
 				)}
 			</div>
 
-			<Dialog onOpenChange={setSaveOpen} open={saveOpen}>
-				{/* max-h + overflow so the preview and the purge command cannot push
-				    the footer off-screen. min-w-0 on the children: DialogContent is a
-				    grid, and a grid item defaults to min-width:auto, so a wide <pre>
-				    stretches the track past the dialog instead of scrolling inside it. */}
-				<DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
-					<DialogHeader>
-						<DialogTitle className="truncate pr-10">
-							Save {fileName}
-						</DialogTitle>
-						<DialogDescription>
+			{/* The review lives in a drawer so the editor stays visible behind it —
+			    what you are about to write next to what you were just editing. The
+			    body scrolls between a fixed header and footer, so the purge command
+			    can never push Save off-screen. min-w-0 on the sections keeps a wide
+			    <pre> scrolling inside the drawer instead of stretching it. */}
+			<Sheet onOpenChange={setSaveOpen} open={saveOpen}>
+				<SheetContent
+					className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl"
+					side="right"
+				>
+					<SheetHeader className="border-b pr-12">
+						<SheetTitle className="truncate">Save {fileName}</SheetTitle>
+						<SheetDescription>
 							This is exactly what will be written to {search.bucket}. Nothing
 							has been uploaded yet.
-						</DialogDescription>
-					</DialogHeader>
-
-					{issues.length > 0 ? (
-						<Alert variant="destructive">
-							<HugeiconsIcon icon={Alert01Icon} size={16} strokeWidth={1.5} />
-							<AlertDescription className="flex flex-col gap-1">
-								<span>
-									Saving anyway will store a file that does not parse:
-								</span>
-								{issues.slice(0, 5).map((issue) => (
-									<span key={`${issue.from}-${issue.message}`}>
-										{issue.message}
+						</SheetDescription>
+					</SheetHeader>
+					<div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+						{issues.length > 0 ? (
+							<Alert variant="destructive">
+								<HugeiconsIcon icon={Alert01Icon} size={16} strokeWidth={1.5} />
+								<AlertDescription className="flex flex-col gap-1">
+									<span>
+										Saving anyway will store a file that does not parse:
 									</span>
-								))}
-								{issues.length > 5 ? (
-									<span>…and {issues.length - 5} more.</span>
-								) : null}
-							</AlertDescription>
-						</Alert>
-					) : null}
+									{issues.slice(0, 5).map((issue) => (
+										<span key={`${issue.from}-${issue.message}`}>
+											{issue.message}
+										</span>
+									))}
+									{issues.length > 5 ? (
+										<span>…and {issues.length - 5} more.</span>
+									) : null}
+								</AlertDescription>
+							</Alert>
+						) : null}
 
-					<div className="flex min-w-0 flex-col gap-2">
-						<div className="flex items-center justify-between gap-3">
-							<span className={SECTION_LABEL}>Preview</span>
-							<span className="text-muted-foreground text-xs">
-								{formatBytes(new TextEncoder().encode(text).byteLength)} ·{" "}
-								{text.split("\n").length} lines
-							</span>
-						</div>
-						<RichTextViewer className="max-h-64" lang={lang} text={text} />
-						<details className="min-w-0">
-							<summary className="cursor-pointer text-muted-foreground text-xs">
-								Show the raw {lang} that will be written
-							</summary>
-							<pre className={cn(CODE_BLOCK, "mt-2 max-h-64")}>{text}</pre>
-						</details>
-					</div>
-
-					<div className="flex min-w-0 flex-col gap-2">
-						<div className={SECTION_LABEL}>Cache-Control</div>
-						<ToggleGroup
-							onValueChange={(value: string[]) =>
-								setSaveCacheControl(value[0] ?? "")
-							}
-							value={saveCacheControl ? [saveCacheControl] : []}
-							variant="outline"
-						>
-							{CACHE_PRESETS.map((preset) => (
-								<ToggleGroupItem
-									key={preset.value}
-									title={preset.hint}
-									value={preset.value}
-								>
-									{preset.label}
-								</ToggleGroupItem>
-							))}
-						</ToggleGroup>
-						<Input
-							onChange={(event) => setSaveCacheControl(event.target.value)}
-							placeholder="public, max-age=300, must-revalidate"
-							value={saveCacheControl}
-						/>
-						<p className="text-muted-foreground text-xs">
-							{describeCacheControl(saveCacheControl)}
-						</p>
-						<p className="text-muted-foreground text-xs">
-							Currently stored on this object:{" "}
-							<code>{sourceQuery.data?.cacheControl || "nothing"}</code>
-						</p>
-					</div>
-
-					{savePurgeCommand ? (
 						<div className="flex min-w-0 flex-col gap-2">
 							<div className="flex items-center justify-between gap-3">
+								<span className={SECTION_LABEL}>Preview</span>
+								<span className="text-muted-foreground text-xs">
+									{formatBytes(new TextEncoder().encode(text).byteLength)} ·{" "}
+									{text.split("\n").length} lines
+								</span>
+							</div>
+							<RichTextViewer className="max-h-64" lang={lang} text={text} />
+							<details className="min-w-0">
+								<summary className="cursor-pointer text-muted-foreground text-xs">
+									Show the raw {lang} that will be written
+								</summary>
+								<pre className={cn(CODE_BLOCK, "mt-2 max-h-64")}>{text}</pre>
+							</details>
+						</div>
+
+						<div className="flex min-w-0 flex-col gap-2">
+							<div className={SECTION_LABEL}>Cache-Control</div>
+							<ToggleGroup
+								onValueChange={(value: string[]) =>
+									setSaveCacheControl(value[0] ?? "")
+								}
+								value={saveCacheControl ? [saveCacheControl] : []}
+								variant="outline"
+							>
+								{CACHE_PRESETS.map((preset) => (
+									<ToggleGroupItem
+										key={preset.value}
+										title={preset.hint}
+										value={preset.value}
+									>
+										{preset.label}
+									</ToggleGroupItem>
+								))}
+							</ToggleGroup>
+							<Input
+								onChange={(event) => setSaveCacheControl(event.target.value)}
+								placeholder="public, max-age=300, must-revalidate"
+								value={saveCacheControl}
+							/>
+							<p className="text-muted-foreground text-xs">
+								{describeCacheControl(saveCacheControl)}
+							</p>
+							<p className="text-muted-foreground text-xs">
+								Currently stored on this object:{" "}
+								<code>{sourceQuery.data?.cacheControl || "nothing"}</code>
+							</p>
+						</div>
+
+						{savePurgeCommand ? (
+							<div className="flex min-w-0 flex-col gap-2">
 								<span className={SECTION_LABEL}>
 									Purge this file after saving
 								</span>
-								<Button
-									onClick={async () => {
-										await navigator.clipboard.writeText(
-											savePurgeCommand.command,
-										);
-										setStatus({ text: "Copied the purge command." });
-									}}
-									size="xs"
-									type="button"
-									variant="outline"
-								>
-									Copy
-								</Button>
+								<TerminalBlock
+									command={savePurgeCommand.command}
+									fileUrl={savePurgeCommand.fileUrl}
+									secrets={[provider.cloudflareApiToken]}
+									onCopied={(message) => setStatus({ text: message })}
+								/>
+								<p className="text-muted-foreground text-xs">
+									{savePurgeCommand.scope}
+								</p>
+								{savePurgeCommand.notes.map((note) => (
+									<p className="text-destructive text-xs" key={note}>
+										{note}
+									</p>
+								))}
+								{canPurge(provider) ? (
+									<p className="text-muted-foreground text-xs">
+										Saving also runs this purge in-app — the command is here for
+										scripting or if the in-app call fails.
+									</p>
+								) : (
+									<p className="text-muted-foreground text-xs">
+										Cloudflare's API refuses browser calls, so run this yourself
+										after saving. Until it completes, the edge keeps serving the
+										old file.
+									</p>
+								)}
 							</div>
-							<pre className={cn(CODE_BLOCK, "max-h-40")}>
-								{savePurgeCommand.command}
-							</pre>
-							<p className="text-muted-foreground text-xs">
-								{savePurgeCommand.scope}
-							</p>
-							{savePurgeCommand.notes.map((note) => (
-								<p className="text-destructive text-xs" key={note}>
-									{note}
-								</p>
-							))}
-							{canPurge(provider) ? (
-								<p className="text-muted-foreground text-xs">
-									Saving also runs this purge in-app — the command is here for
-									scripting or if the in-app call fails.
-								</p>
-							) : (
-								<p className="text-muted-foreground text-xs">
-									Cloudflare's API refuses browser calls, so run this yourself
-									after saving. Until it completes, the edge keeps serving the
-									old file.
-								</p>
-							)}
-						</div>
-					) : null}
-
-					<DialogFooter>
+						) : null}
+					</div>
+					<SheetFooter className="flex-row justify-end border-t">
 						<Button
 							onClick={() => setSaveOpen(false)}
 							size="sm"
@@ -568,9 +565,9 @@ function EditPage() {
 						>
 							{saveMutation.isPending ? "Saving…" : "Save file"}
 						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+					</SheetFooter>
+				</SheetContent>
+			</Sheet>
 		</div>
 	);
 }
