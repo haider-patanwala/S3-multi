@@ -63,8 +63,9 @@ Do not build UI that promises resume until a resume path exists.
 `src/lib/transfers.ts`: `listTransfers` (newest `updatedAt` first),
 `saveTransfer`, `deleteTransfer`, `clearCompletedTransfers`, `clearAllTransfers`.
 
-`/transfers` renders the history; `/browse` renders running transfers as toasts
-(`.toast-stack` in `src/styles.css`).
+`/transfers` renders the history as shadcn `Card`s with a `Progress` bar each;
+`/browse` renders running transfers as a fixed `z-60` stack of the same cards in
+its bottom-right corner.
 
 ## Relations
 

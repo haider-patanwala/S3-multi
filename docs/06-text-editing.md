@@ -1,60 +1,161 @@
 ---
 id: text-editing
 type: subsystem
-owns: src/lib/s3.ts:putObjectText, src/lib/s3.ts:getObjectText, src/routes/browse.tsx:saveTextMutation
+owns: src/routes/edit.tsx, src/components/code-editor.tsx, src/components/rich-markdown-editor.tsx, src/components/rich-text-viewer.tsx, src/lib/richtext.ts, src/lib/s3.ts:putObjectText, src/lib/s3.ts:getObjectText
 ---
 
 # Text editing
 
-Edit markdown, JSON, YAML, XML, CSV, and plain-text objects in place, in the
-browser, with no download/re-upload round trip.
+Edit markdown, JSON, YAML, HTML, XML, CSV, and plain-text objects in place, in
+the browser, with no download/re-upload round trip.
+
+Editing is a **route, not a modal**: `/edit?providerId&bucket&key&prefix`
+(`src/routes/edit.tsx`). The browse preview drawer is a read-only quick look
+with an **Open in editor** button; the row overflow menu has an **Edit** entry.
+Editing used to live inside that preview, and a full editor does not fit in one.
 
 ## Eligibility
 
-An object is editable when `isEditableTextContentType(preview.contentType)` is
-true (`src/lib/utils.ts`): `text/*`, or a content type containing `yaml`, `yml`,
+An object is editable when `isEditableTextContentType(contentType)` is true
+(`src/lib/utils.ts`): `text/*`, or a content type containing `yaml`, `yml`,
 `markdown`, `xml`, or `json`.
 
 `contentType` comes from `resolveObjectContentType`, so an R2 object stored with no
 content type is still editable if its extension says text. This matters — R2
-uploads frequently arrive as `application/octet-stream`.
+uploads frequently arrive as `application/octet-stream`. The **Edit** menu entry
+is gated on `resolveObjectContentType(item.key)` alone, because the menu opens
+before anything has been fetched.
 
 ## Editor state
 
-Three pieces of state in `src/routes/browse.tsx`:
+`src/routes/edit.tsx` owns three things; the key itself lives in the URL, so the
+editor is linkable and survives a reload.
 
 | State | Meaning |
 |---|---|
-| `previewKey` | Which key is open. The save target. |
-| `textPreview` | The pristine baseline — what is believed to be in the bucket. |
-| `editText` | The buffer being typed into. |
+| `search.key` | Which key is open. The save target. |
+| `baseline` | The pristine baseline — the raw bytes `getObjectText` returned. |
+| `text` | The buffer being edited, shared by all three tabs. |
 
-Derived: dirty ⇔ `editText !== textPreview`. Both **Reset** and **Save** are
-disabled when clean, so the button state is the dirty indicator.
+Derived: dirty ⇔ `text !== baseline`. **Reset** and **Review & save** are
+disabled when clean, and an `Unsaved` badge appears when dirty.
 
-Plus `editMode` (Preview/Edit tab) and `previewLang`, derived by
-`detectTextLang(previewKey, contentType)`.
+The source is loaded by `objectTextQueryOptions` (`src/lib/query-options.ts`),
+which HEADs first for the real content type and cache header. It is
+`staleTime: Infinity` **on purpose** — a background refetch that swapped the
+baseline under an open editor would silently redefine "unsaved changes". The
+save path writes the new body into that cache entry itself.
 
-There is no autosave, no draft persistence, and no lock. Closing the preview
+There is no autosave, no draft persistence, and no lock. Navigating away
 discards the buffer without warning, and two tabs editing the same key is
 last-write-wins.
 
-## Rich viewing and formatting
+## The three tabs
+
+| Tab | Component | Available for |
+|---|---|---|
+| Rich text | `components/rich-markdown-editor.tsx` (Tiptap) | `markdown` only |
+| Code | `components/code-editor.tsx` (CodeMirror 6) | every language |
+| Preview | `components/rich-text-viewer.tsx` | every language |
+
+All three read and write the same `text` buffer, so switching tabs mid-edit
+keeps the changes and the preview follows the buffer without a save round trip.
+Markdown opens in Rich text; everything else opens in Code.
+
+Both editors are `React.lazy` imports. Together they are ~1.1 MB raw and only
+this route uses them; the rest of the app must not pay for that.
+
+### Rich text is Markdown-only, deliberately
+
+The document of record is always the text buffer. `tiptap-markdown` parses
+Markdown into the ProseMirror document on the way in and serialises it back on
+the way out, so `onChange` hands back Markdown and `putObjectText` writes the
+same kind of bytes it always did — **the rich editor never produces HTML for a
+`.md` file.**
+
+The Notion feel is StarterKit's input rules (`# `, `- `, `> `, ``` , `**bold**`
+convert as you type), not a slash-command palette.
+
+HTML, JSON and YAML get **no** rich mode. An HTML document through a ProseMirror
+schema loses `<head>`, attributes and scripts — round-tripping it would silently
+destroy the file. JSON and YAML have no rich form at all. For those, syntax
+safety comes from the code editor's diagnostics instead.
+
+Ceiling: a Markdown round trip through a parser normalises formatting (`*`
+bullets become `-`, setext headings become ATX, wrapping is redone). The Code tab
+is the byte-exact editor. The editor guards against fighting itself with an
+`emitted` ref: incoming `value` that differs from its own last output is an
+outside edit (Reset, or a switch back from Code) and gets pushed into the
+document; echoing its own output back would reset the cursor on every keystroke.
+
+### Diagnostics — the error lens
+
+`lintText(text, lang)` in `src/lib/richtext.ts`. No language server; two
+checkers, each chosen because it answers the question an editor actually asks.
+
+| Lang | Checker | Reports |
+|---|---|---|
+| `json`, `yaml` | Prettier (already a dependency) | first parse error |
+| `html` | `htmlhint`, dynamically imported | every error |
+| `markdown`, `text` | none | — |
+
+**JSON and YAML: the syntax check is the formatter.** Prettier already parses
+both, so "it does not format" and "it does not parse" are the same question and
+the answer costs nothing new.
+
+**HTML needed its own checker, and the obvious candidates were measured and
+rejected** — this is the part to not re-litigate from first principles:
+
+| Candidate | Why not |
+|---|---|
+| Prettier `html` parser | Error-tolerant. Silent on `<div><p>hi</div>` and on a stray `</span>`. |
+| lezer (`@codemirror/lang-html`, already installed) | Same. Error nodes only for an unterminated attribute string. |
+| `parse5` | Reports HTML5 *spec* parse errors — a different question. Fires `missing-doctype` on every fragment, and still says nothing about an unclosed `<div>`, because the spec tolerates one. |
+| `html-validate` | A whole rule engine. Far too heavy for one lens. |
+
+`htmlhint` catches unclosed tags, stray close tags and duplicate ids with exact
+positions, stays silent on valid HTML5 (void elements, unquoted attributes, bare
+fragments), and is a 12.6 kB gzipped chunk loaded only when an HTML file opens.
+
+Its **default ruleset is not used**: that carries style opinions (lowercase tag
+names, double-quoted attributes, doctype required, `<title>` required) which
+would light up correct files pulled out of a bucket. `HTML_RULES` is syntax
+only.
+
+Every checker's position is normalised to a document offset. Prettier reports
+`cause.index` (babel), `loc.start.offset` (yaml) or only line/column; htmlhint
+reports 1-based line/column plus the offending `raw` text. `clampStart` keeps
+every range at least one character wide — **a parse failure at EOF produces a
+zero-width range, and CodeMirror draws nothing for it**, so the error would be
+invisible. `richtext.check.ts` covers this.
+
+CodeMirror renders a diagnostic as a wavy underline on the offending token plus
+a gutter marker with the message on hover; the page header shows a red badge and
+the save drawer lists the messages. The squiggle is
+`text-decoration: underline wavy` rather than CodeMirror's stock SVG background
+image — drawn by the text engine, so it stays crisp at any zoom and tracks the
+font. `text-decoration-skip-ink: none` keeps it continuous under descenders.
+
+A syntax error **never blocks a save**. Sometimes the point of an edit is to
+hand-fix a file the parser hates. It must never be invisible either.
+
+## Language detection and formatting
 
 `src/lib/richtext.ts`. Language detection is **extension-first**, content-type
 second: buckets are full of JSON and Markdown stored as
 `application/octet-stream` or `text/plain`.
 
-| Lang | Preview tab | Formatter |
-|---|---|---|
-| `markdown` | `marked` → `DOMPurify.sanitize` → `.markdown-body` | Prettier `markdown` |
-| `html` | `<iframe sandbox="" srcDoc>` | Prettier `html` |
-| `json` | pretty-printed source | Prettier `babel` + `estree` |
-| `yaml` | pretty-printed source | Prettier `yaml` |
-| `text` | source as-is | none — no Format button |
+| Lang | Preview tab | Formatter | Diagnostics |
+|---|---|---|---|
+| `markdown` | `marked` → `DOMPurify.sanitize` → `.markdown-body` | Prettier `markdown` | none |
+| `html` | `<iframe sandbox="" srcDoc>` | Prettier `html` | htmlhint |
+| `json` | source as-is | Prettier `babel` + `estree` | Prettier |
+| `yaml` | source as-is | Prettier `yaml` | Prettier |
+| `text` | source as-is | none — no Format button | none |
 
-The rendered preview reads `editText`, the **live buffer**, so it follows edits
-without a save round trip.
+Markdown is deliberately **not** linted: Prettier's markdown parser accepts
+anything, so linting it would load a 270 kB plugin on every keystroke to always
+return `[]`.
 
 ### Prettier loading
 
@@ -65,8 +166,8 @@ bundle.
 
 ### Auto-format on open
 
-`previewMutation` formats the file into `editText` while leaving `textPreview` as
-the **raw bucket bytes**. That asymmetry is deliberate: the diff that drives the
+The edit route formats the file into `text` while leaving `baseline` as the
+**raw bucket bytes**. That asymmetry is deliberate: the diff that drives the
 Save button then reflects a real difference against S3, so saving a reformatted
 file genuinely persists the reformat, and **Reset** returns the original bytes.
 Formatting is best-effort — `formatTextOrKeep` returns the input unchanged when
@@ -82,12 +183,17 @@ Sanitizing there would misrepresent the file the operator is editing.
 
 ## Save pipeline
 
-**Save changes** does not save. It opens the save dialog, which collects a
-`Cache-Control` and shows the purge command for the key; its **Save file** button
-runs `saveTextMutation(cacheControl)`. See
-[cache-control](11-cache-control.md).
+**Review & save** does not save. It opens the save drawer, which is the
+last-look-before-writing step:
 
-`saveTextMutation` → `putObjectText(provider, bucket, previewKey, editText, preview.contentType, cacheControl)`.
+- the rendered preview of the buffer, plus the exact raw bytes behind a
+  `<details>`, its encoded size and line count;
+- any syntax error, as a destructive alert — you may still save;
+- the `Cache-Control` to write (see [cache-control](11-cache-control.md));
+- the purge command for the key.
+
+Its **Save file** button runs `saveMutation(cacheControl)` →
+`putObjectText(provider, bucket, key, text, contentType, cacheControl)`.
 
 `putObjectText` (`src/lib/s3.ts`) does three things, in order:
 
@@ -142,7 +248,7 @@ difference between reporting a save and knowing one.
 
 ### 4. Purge, or say it wasn't purged
 
-Back in `saveTextMutation`, branching on `canPurge(provider)`:
+Back in `saveMutation`, branching on `canPurge(provider)`:
 
 - **AWS** — the edited key is invalidated in CloudFront. A purge failure is
   reported as `"Saved, but the CDN purge failed: …"`; it must never read as a
@@ -157,9 +263,10 @@ Details in [cdn-purge](07-cdn-purge.md).
 
 ### 5. Settle
 
-On success: `setTextPreview(saved)` (the new baseline, so the buttons go clean),
-a status message naming the bucket, and
-`invalidateQueries(["objects", providerId, bucket])` to refresh size and
+On success: `setBaseline(saved)` (the new baseline, so the buttons go clean), the
+`["object-text", …]` cache entry is rewritten with the saved body so a return
+visit does not read back the pre-save copy, a status message naming the bucket,
+and `invalidateQueries(["objects", providerId, bucket])` to refresh size and
 last-modified in the listing.
 
 On failure: `setErrorMessage(...)`, and the baseline is **not** advanced — the
@@ -210,19 +317,34 @@ counter-theory and stayed wrong for longer.
 
 ## Ceilings
 
-- `<textarea>`, not a code editor: no syntax highlighting, no line numbers, no
-  large-file strategy. The Preview tab is the readable view; the Edit tab is plain.
-- Whole file in memory, whole file rewritten on every save.
+- No slash-command menu in the rich editor — Markdown input rules and a fixed
+  toolbar only. A Tiptap `suggestion` extension would be the upgrade.
+- Rich text is Markdown-only, and normalises formatting. See above.
+- No large-file strategy: whole file in memory, whole file rewritten on save,
+  and CodeMirror gets the entire document.
 - No conflict detection. A stale `If-Match: ETag` precondition would be the fix.
+- Diagnostics are syntax only, not a language server. JSON and YAML report one
+  error at a time (Prettier stops at the first); HTML reports all of them. No
+  semantic checks anywhere: no JSON Schema, no "does this `href` resolve", no
+  cross-file anything. Markdown and plain text get nothing.
 - No formatter for XML or CSS — `detectTextLang` returns `text`, so they are
-  editable but not formattable.
-- `.md` files render only CommonMark + GFM as `marked` implements it: no
+  editable, highlight-free and not formattable.
+- `.md` files *preview* only CommonMark + GFM as `marked` implements it: no
   front-matter handling, no Mermaid, no syntax highlighting in fenced blocks.
+  Front matter also has no special handling in the rich editor.
 
-## Runnable check
+## Runnable checks
 
+`node src/lib/richtext.check.ts` covers language detection, the diagnostic offset
+normalisation for all three parsers, that every range is at least one character
+wide, and — the case that matters most — that **valid** HTML5 and bare fragments
+report nothing. A lens with false positives is worse than no lens.
 `node src/lib/cdn.check.ts` covers the purge-target logic the save path depends
-on. The S3 round trip itself needs live credentials and is not covered.
+on.
+
+Not covered, and needing a browser plus a scratch bucket: the S3 round trip, and
+the Tiptap Markdown round trip (open a `.md` file with lists, code fences and
+inline HTML, save it, and confirm the bytes that come back are Markdown).
 
 ## Relations
 

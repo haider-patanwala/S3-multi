@@ -108,6 +108,30 @@ and the bucket:
 Effects then write the resolved values back into the URL with `replace: true`, so
 a bare `/browse` self-heals into a fully-qualified location.
 
+## Public domains
+
+`publicBaseUrl` is the provider-wide origin visitors load objects from.
+`bucketDomains` (bucket name → origin) overrides it per bucket, which is the
+common case when one account serves several buckets on different domains.
+
+`publicBaseUrlFor(provider, bucket)` in `src/lib/cdn.ts` resolves the pair —
+bucket domain first, provider default second — and every consumer goes through
+it: `cdnUrlForKey`, `buildObjectUrl` (so **Copy URL** shares the real domain,
+not the endpoint URL) and the purge-command builder. Both are edited on the
+providers page; `saveProvider` trims them and drops empty entries, so a blank
+input never persists as a domain with no origin.
+
+`cloudflareZoneId` and `cloudflareApiToken` are also editable there. The token
+is encrypted like the access keys (`cloudflareApiTokenEncrypted`); storing them
+on the provider is what lets the purge command arrive pre-filled instead of
+carrying `<ZONE_ID>` / `<API_TOKEN>` placeholders.
+
+**Adding a provider field means touching three places**: the type in
+`src/lib/types.ts`, *and* both directions in `src/lib/providers.ts`
+(`toConfig` and the `ProviderRecord` built by `saveProvider`). That mapping is
+an explicit whitelist — a field added only to the type is silently dropped on
+save.
+
 ## Relations
  
 - `constrained-by` → [product](00-product.md) — no backend is why this is client-side

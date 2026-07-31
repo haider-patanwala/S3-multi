@@ -1,7 +1,7 @@
 ---
 id: architecture
 type: concept
-owns: src/main.tsx, src/routes/__root.tsx, src/routes/index.tsx, src/components/app-shell.tsx, vite.config.js
+owns: src/main.tsx, src/routes/__root.tsx, src/routes/index.tsx, src/components/app-shell.tsx, src/lib/theme.ts, src/styles.css, vite.config.js
 ---
 
 # Architecture
@@ -45,7 +45,8 @@ Devtools render only when `import.meta.env.VITE_NODE_ENV === "development"`
 | Path | File | Purpose |
 |---|---|---|
 | `/` | `src/routes/index.tsx` | Redirects to `/browse` |
-| `/browse` | `src/routes/browse.tsx` | The main workspace: listing, preview, editor, purge dialog |
+| `/browse` | `src/routes/browse.tsx` | The main workspace: listing, read-only preview, purge dialog |
+| `/edit` | `src/routes/edit.tsx` | Full-page text editor: rich text, code, preview, save |
 | `/providers` | `src/routes/providers.tsx` | Provider CRUD and connection test |
 | `/transfers` | `src/routes/transfers.tsx` | Transfer history |
 | `/help` | `src/routes/help.tsx` | User-facing help |
@@ -56,6 +57,12 @@ Devtools render only when `import.meta.env.VITE_NODE_ENV === "development"`
 `src/routes/browse.tsx`): `providerId`, `bucket`, `prefix`, `view`. The URL is the
 source of truth for *where you are*; effects reconcile it toward the resolved
 provider/bucket. This makes locations shareable and reload-safe.
+
+`/edit` takes `providerId`, `bucket`, `key`, `prefix` — the same idea applied to
+*what you are editing*, so an open editor is a linkable, reload-safe URL and
+`prefix` is only carried so **Back to browser** lands where you left. It is
+reached from `/browse` (row menu → **Edit**, or **Open in editor** in the preview
+dialog), not from the sidebar.
 
 ## State ownership
 
@@ -88,6 +95,40 @@ user action (route)
   → status message rendered  (never swallowed)
   → queryClient.invalidateQueries  → list refetches
 ```
+
+## Styling
+
+One system, no exceptions. `src/styles.css` defines the shadcn token set twice —
+`:root` for light, `.dark` for dark — plus an `@theme inline` block that maps each
+token onto a Tailwind utility (`--color-card: var(--card)`, and so on). Everything
+else in the app styles itself with those utilities.
+
+Consequences worth knowing before you edit:
+
+- **Dark mode is the `dark` class on `<html>`.** `src/lib/theme.ts:applyTheme`
+  toggles it and sets `color-scheme` to match, and `main.tsx` calls it before
+  React mounts so the first paint is already correct. shadcn's `dark:` variant is
+  declared as `@custom-variant dark (&:is(.dark *))` — key the theme off anything
+  else (a `data-` attribute, a media query) and every `dark:` utility in
+  `components/ui/` silently stops firing.
+- **Controls come from `src/components/ui/`.** Dialogs, selects, toggles,
+  checkboxes, breadcrumbs, the sidebar — add the shadcn component (`shadcn add`)
+  rather than hand-rolling one. The registry style is `base-nova` with Hugeicons
+  (`components.json`).
+- **The only bespoke CSS is `.markdown-body`.** It styles HTML injected via
+  `dangerouslySetInnerHTML` (DOMPurify output in
+  [text-editing](06-text-editing.md)), so those tags cannot carry utility
+  classes. Its values still resolve to theme tokens. The Tiptap editor reuses
+  the same class on its ProseMirror content, so what you type looks like what
+  the preview renders and there is still one rule, not two.
+- **The two third-party editors theme through tokens, not their own themes.**
+  CodeMirror gets an `EditorView.theme` built from `var(--foreground)`,
+  `var(--muted)`, `var(--destructive)` (`components/code-editor.tsx`) instead of
+  a CodeMirror theme package. That is why it follows the `dark` class with
+  everything else and needs no second palette.
+
+A hardcoded colour, or a `var(--something)` that is not a token in
+`src/styles.css`, is a bug: it will be right in one theme and wrong in the other.
 
 ## Build-time pieces
 

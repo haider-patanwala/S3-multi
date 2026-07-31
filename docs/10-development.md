@@ -14,17 +14,29 @@ pnpm build          # vite build && tsc --noEmit
 pnpm preview        # serve the built bundle
 pnpm lint           # biome check --write .
 pnpm lint:error     # biome check, errors only
-node src/lib/cdn.check.ts   # CDN URLs, purge-command building, shell quoting
+node src/lib/cdn.check.ts       # CDN URLs, purge-command building, shell quoting
+node src/lib/richtext.check.ts  # language detection, syntax-diagnostic offsets
 ```
 
 ## Pre-commit gate
 
 ```bash
-pnpm lint:error && npx tsc --noEmit && node src/lib/cdn.check.ts
+pnpm lint:error && npx tsc --noEmit && node src/lib/cdn.check.ts && node src/lib/richtext.check.ts
 ```
 
 `cdn.check.ts` shells out to `/bin/sh` to verify the purge command's quoting
 survives a real shell. It runs no network calls and nothing destructive.
+
+`richtext.check.ts` asserts against the linters' *real* output rather than an
+assumed shape — the parsers report a position three different ways
+(`cause.index`, `loc.start.offset`, 1-based line/column), and an off-by-one there
+puts the editor's error underline on the wrong character. It also pins the
+no-false-positives cases for HTML, which is the property that makes the error
+lens trustworthy.
+
+Choosing an HTML checker by reputation rather than measurement would have picked
+`parse5` and shipped a lens that flags every fragment and misses every unclosed
+tag. See [text-editing](06-text-editing.md) § Diagnostics for the comparison.
 
 Biome (`biome.jsonc`) enforces tab indent, sorted imports, and sorted JSX props.
 It will rewrite files on `--write`, so run it before reading a file you just
@@ -36,6 +48,11 @@ Files named `*.check.ts` / `*.check.js` are standalone Node scripts, not app cod
 Node 24 type-strips and runs them directly. They are excluded from `tsconfig.json`
 (`"exclude": ["**/*.check.ts"]`), which is why they may use `node:` imports and
 explicit `.ts` import specifiers.
+
+Node's ESM resolver has no extensionless resolution, so a module a check imports
+must also spell out `.ts` on *its* relative imports (`richtext.ts` imports
+`./utils.ts`). `allowImportingTsExtensions` in `tsconfig.json` is what lets tsc
+accept that; it is safe only because every build here is `--noEmit`.
 
 There is no test framework and no test runner. A new non-trivial pure function
 should get an `assert`-based check in the sibling `*.check.ts`, not a new

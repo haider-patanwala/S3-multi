@@ -26,12 +26,13 @@ this codebase correctly on the first try.
 | `s3-client` | [03-s3-client.md](03-s3-client.md) | subsystem | SDK client construction, per-provider quirks, CORS |
 | `browsing` | [04-browsing.md](04-browsing.md) | subsystem | Prefix listing, query keys, virtualization |
 | `transfers` | [05-transfers.md](05-transfers.md) | subsystem | Upload/download, progress, persisted history |
-| `text-editing` | [06-text-editing.md](06-text-editing.md) | subsystem | In-browser file editor, save + verify pipeline |
+| `text-editing` | [06-text-editing.md](06-text-editing.md) | subsystem | The `/edit` page: rich-text and code editors, diagnostics, save + verify pipeline |
 | `cdn-purge` | [07-cdn-purge.md](07-cdn-purge.md) | subsystem | CloudFront invalidation, Cloudflare purge, the CORS wall and the two shims around it |
 | `caching-layers` | [08-caching-layers.md](08-caching-layers.md) | concept | The four caches, and which one ate your edit |
 | `failure-modes` | [09-failure-modes.md](09-failure-modes.md) | reference | Symptom → cause → fix catalogue |
 | `development` | [10-development.md](10-development.md) | reference | Commands, checks, adding a provider field, browser-verification traps |
 | `cache-control` | [11-cache-control.md](11-cache-control.md) | subsystem | Writing edge-cache headers vs always reading fresh — two opposite needs, two different params |
+| `deployment` | [12-deployment.md](12-deployment.md) | operations | Shipping the static bundle: HTTPS requirement, SPA fallback, CSP and CDN headers, browser floor |
 
 ---
 
@@ -73,6 +74,7 @@ Pick the path, read it in order, skip the rest.
 | "Purge isn't working" | `cdn-purge` → `caching-layers` → `development` |
 | "The CDN keeps hitting my bucket / the bill is too high" | `cache-control` → `caching-layers` → `cdn-purge` |
 | "I'm reading stale bytes" | `cache-control` → `caching-layers` |
+| "Change the editor / add a language" | `text-editing` → `architecture` |
 | "Add a new S3-compatible provider" | `provider-vault` → `s3-client` → `development` |
 | "Add a field to a provider" | `development` (has the exact 4-file checklist) |
 | "Why is there no backend?" | `product` → `architecture` |
@@ -104,3 +106,7 @@ Facts that hold across the whole product. Violating one is a bug, not a design c
 8. **A spec citation is not a measurement.** Two separate bugs shipped on
    plausible-but-unverified reasoning about the HTTP cache. Measure the actual
    requests. See [caching-layers](08-caching-layers.md).
+9. **The UI is stock shadcn.** Every control is a component from
+   `src/components/ui/`, and every colour, radius and shadow resolves to a
+   shadcn theme token. No bespoke component CSS, no second palette. See
+   [architecture](01-architecture.md) § Styling.

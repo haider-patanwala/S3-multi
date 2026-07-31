@@ -26,7 +26,7 @@ simultaneously true.
 - `CACHE_PRESETS` — four presets (`immutable` 1 year, 1 day, 5 minutes, `no-store`), each with a `hint` explaining when it applies.
 - `suggestCacheControl(key)` — the default when nothing is configured. Media, fonts and archives get `max-age=31536000, immutable`; everything else gets `max-age=300, must-revalidate`.
 - `maxAgeOf(cc)` / `isCached(cc)` — parse the header. `s-maxage` wins over `max-age` because a CDN edge *is* a shared cache. `no-store` and `no-cache` both return 0.
-- `describeCacheControl(cc)` — the human sentence shown in the save dialog.
+- `describeCacheControl(cc)` — the human sentence shown in the save drawer.
 
 ### Why editable text does not get a long TTL
 
@@ -49,7 +49,7 @@ A provider-level `defaultCacheControl` overrides the suggestion when set.
 `putObjectText` falling back to the existing header is what keeps
 [invariant 6](index.md) true: an overwrite never invents or drops metadata.
 
-## The save dialog
+## The save drawer
 
 `saveTextMutation` no longer fires on the Save button. The button opens a dialog
 (`saveOpen` / `saveCacheControl` in `src/routes/browse.tsx`) which shows:

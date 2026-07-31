@@ -34,6 +34,27 @@ export function formatTimestamp(value?: number | string) {
 	}).format(new Date(value));
 }
 
+/**
+ * Strip credentials out of anything shown to the user. SDK errors quote the
+ * request they failed on, so a secret can surface in a message even though the
+ * app never logs one deliberately. Every error surface goes through here —
+ * redacting in one call site is how the next one gets forgotten.
+ *
+ * `replaceAll`, not `replace`: a secret can appear more than once in a message.
+ */
+export function redactSecrets(
+	message: string,
+	...secrets: (string | undefined)[]
+) {
+	return secrets.reduce<string>(
+		(text, secret) =>
+			secret && secret.length >= 8
+				? text.replaceAll(secret, "[redacted]")
+				: text,
+		message,
+	);
+}
+
 export function shortProviderLabel(type: ProviderType) {
 	switch (type) {
 		case "aws":

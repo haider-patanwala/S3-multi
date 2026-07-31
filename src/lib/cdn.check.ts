@@ -33,6 +33,38 @@ assert.equal(
 	"https://cdn.example.com/my%20docs/a%2Bb%20%26%20c.md",
 );
 
+// A per-bucket custom domain wins over the provider-wide default; other
+// buckets keep the default, and a blank mapping falls through rather than
+// producing an URL with no origin.
+{
+	const perBucket: ProviderConfig = {
+		...withCdn,
+		bucketDomains: { assets: "https://assets.example.com/", blank: "  " },
+	};
+	assert.equal(
+		cdnUrlForKey(perBucket, "a.png", "assets"),
+		"https://assets.example.com/a.png",
+	);
+	assert.equal(
+		cdnUrlForKey(perBucket, "a.png", "other"),
+		"https://cdn.example.com/a.png",
+	);
+	assert.equal(
+		cdnUrlForKey(perBucket, "a.png", "blank"),
+		"https://cdn.example.com/a.png",
+	);
+	// The purge command targets the bucket's own domain, and surfaces the file
+	// URL for the copy button.
+	const built = buildPurgeCommand(
+		{ ...perBucket, cloudflareZoneId: "z", cloudflareApiToken: "t" },
+		["a.png"],
+		"assets",
+	);
+	assert.ok(built);
+	assert.match(built.command, /assets\.example\.com\/a\.png/);
+	assert.equal(built.fileUrl, "https://assets.example.com/a.png");
+}
+
 // ── canPurge: in-app purge is AWS-only by design ──────────────────────────────
 
 assert.equal(canPurge(base), false);

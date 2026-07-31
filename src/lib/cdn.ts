@@ -17,15 +17,29 @@ import type { ProviderConfig } from "./types";
  *          ready-to-run curl command via `buildPurgeCommand`.
  */
 
-export function cdnUrlForKey(provider: ProviderConfig, key: string) {
-	if (!provider.publicBaseUrl) {
+/** The public origin serving `bucket`: its custom domain if set, else the provider-wide one. */
+export function publicBaseUrlFor(provider: ProviderConfig, bucket?: string) {
+	return (
+		(bucket && provider.bucketDomains?.[bucket]?.trim()) ||
+		provider.publicBaseUrl?.trim() ||
+		undefined
+	);
+}
+
+export function cdnUrlForKey(
+	provider: ProviderConfig,
+	key: string,
+	bucket?: string,
+) {
+	const baseUrl = publicBaseUrlFor(provider, bucket);
+	if (!baseUrl) {
 		return undefined;
 	}
 	const encoded = key
 		.split("/")
 		.map((segment) => encodeURIComponent(segment))
 		.join("/");
-	return `${provider.publicBaseUrl.replace(/\/+$/, "")}/${encoded}`;
+	return `${baseUrl.replace(/\/+$/, "")}/${encoded}`;
 }
 
 async function purgeCloudFront(provider: ProviderConfig, keys?: string[]) {
@@ -98,6 +112,8 @@ export type PurgeCommand = {
 	scope: string;
 	/** Non-blocking warnings — missing fields, fallbacks taken. */
 	notes: string[];
+	/** Public URL of the single purged file, when one can be built. */
+	fileUrl?: string;
 };
 
 /**
@@ -112,9 +128,10 @@ export type PurgeCommand = {
 export function buildPurgeCommand(
 	provider: ProviderConfig,
 	keys?: string[],
+	bucket?: string,
 ): PurgeCommand | undefined {
 	if (provider.type === "r2") {
-		return buildCloudflareCommand(provider, keys);
+		return buildCloudflareCommand(provider, keys, bucket);
 	}
 	if (provider.type === "aws") {
 		return buildCloudFrontCommand(provider, keys);
@@ -125,6 +142,7 @@ export function buildPurgeCommand(
 function buildCloudflareCommand(
 	provider: ProviderConfig,
 	keys?: string[],
+	bucket?: string,
 ): PurgeCommand {
 	const notes: string[] = [];
 	const zone = provider.cloudflareZoneId?.trim();
@@ -143,7 +161,7 @@ function buildCloudflareCommand(
 
 	const urls = keys?.length
 		? keys
-				.map((key) => cdnUrlForKey(provider, key))
+				.map((key) => cdnUrlForKey(provider, key, bucket))
 				.filter((url): url is string => Boolean(url))
 		: [];
 
@@ -172,7 +190,12 @@ function buildCloudflareCommand(
 		`  --data ${shellQuote(body)}`,
 	].join("\n");
 
-	return { command, scope, notes };
+	return {
+		command,
+		scope,
+		notes,
+		fileUrl: urls.length === 1 ? urls[0] : undefined,
+	};
 }
 
 function buildCloudFrontCommand(

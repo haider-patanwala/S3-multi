@@ -6,6 +6,10 @@
 		"target": "ESNext",
 		"module": "ESNext",
 		"moduleResolution": "Bundler",
+		// So a *.check.ts can pull in a module that itself has relative imports:
+		// node's ESM resolver needs the explicit extension, tsc needs this flag to
+		// tolerate it. Safe here — every build is --noEmit.
+		"allowImportingTsExtensions": true,
 		"lib": ["DOM", "DOM.Iterable", "ES2022"],
 		"skipLibCheck": true,
 		"baseUrl": ".",

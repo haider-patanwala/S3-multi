@@ -3,6 +3,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createRootRouteWithContext, Link } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { AppShell } from "../components/app-shell";
+import { Button } from "../components/ui/button";
 
 export const Route = createRootRouteWithContext<{
 	queryClient: QueryClient;
@@ -11,12 +12,16 @@ export const Route = createRootRouteWithContext<{
 	notFoundComponent: () => {
 		return (
 			<div className="mx-auto max-w-xl px-6 py-24 text-center">
-				<div className="section-label">404</div>
-				<p className="page-title mt-3">Route not found</p>
-				<p className="page-copy mt-4">The requested page does not exist.</p>
-				<Link className="button-primary mt-6 inline-flex" to="/browse">
+				<div className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
+					404
+				</div>
+				<p className="mt-3 font-semibold text-xl">Route not found</p>
+				<p className="mt-4 text-muted-foreground text-sm">
+					The requested page does not exist.
+				</p>
+				<Button className="mt-6" render={<Link to="/browse" />}>
 					Return to browser
-				</Link>
+				</Button>
 			</div>
 		);
 	},

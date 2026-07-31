@@ -143,7 +143,7 @@ write landed and something downstream is serving a stale copy.
 
 ## Object `Cache-Control` (layer ④'s input)
 
-Uploads now write a `Cache-Control`, and the save dialog offers one — without it a
+Uploads now write a `Cache-Control`, and the save drawer offers one — without it a
 CDN picks its own TTL and keeps re-fetching from the bucket, which is the billing
 problem. `putObjectText` still never *invents* one: an explicit choice wins,
 otherwise the object's existing header is preserved. See
